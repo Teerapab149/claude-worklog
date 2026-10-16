@@ -35,7 +35,17 @@ const updater = INSTALLED
 function openWindow() {
 	const browser = appBrowser(config);
 	if (browser) {
-		spawn(browser, windowArgs(url, profile, installedAppId(profile)), { detached: true, stdio: 'ignore' }).unref();
+		const appId = installedAppId(profile);
+		spawn(browser, windowArgs(url, profile, appId), { detached: true, stdio: 'ignore' }).unref();
+		// Edge quietly opens nothing when it no longer knows the app, so a
+		// window that never connects is opened again the plain way.
+		if (appId && server) {
+			setTimeout(() => {
+				if (server.pagesOpen() > 0) return;
+				log('เปิดแบบแอปที่ติดตั้งไม่ขึ้น จึงเปิดหน้าต่างแบบธรรมดาแทน');
+				spawn(browser, windowArgs(url, profile), { detached: true, stdio: 'ignore' }).unref();
+			}, 12000).unref();
+		}
 		return;
 	}
 	log('ไม่พบ Edge หรือ Chrome จึงเปิดในเบราว์เซอร์หลักแทน');

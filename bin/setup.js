@@ -14,7 +14,10 @@ import { parseFolders, suggestRoots } from '../src/setup.js';
 const file = configFile();
 const local = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
 const config = resolveConfig(local);
-const ask = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null;
+// --defaults takes every suggestion without asking. The installer passes it,
+// because it runs this in a hidden console that looks like a terminal.
+const interactive = process.stdin.isTTY && !process.argv.includes('--defaults');
+const ask = interactive ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null;
 const question = async (text, fallback) => {
 	if (!ask) {
 		console.log(`  ใช้ ${fallback}`);

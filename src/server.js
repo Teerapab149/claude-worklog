@@ -50,6 +50,8 @@ function createPresence(idle) {
 			});
 		},
 		stop: () => clearTimeout(timer),
+		/** How many pages are open right now. */
+		count: () => open,
 	};
 }
 
@@ -284,6 +286,8 @@ export function startServer({ db, config, configFile = null, appInstalled = null
 			app.runScan();
 			const watcher = watchLogs(logDirs(config), app.runScan, { log, ...watch });
 			server.on('close', () => { watcher.close(); app.presence.stop(); });
+			// The app launcher asks whether its window ever showed up.
+			server.pagesOpen = app.presence.count;
 			resolve(server);
 		});
 	});

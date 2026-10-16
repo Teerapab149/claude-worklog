@@ -57,7 +57,7 @@ Name: "{autodesktop}\Worklog"; Filename: "{sys}\wscript.exe"; Parameters: """{ap
 [Run]
 ; Guesses project folders and account names from the logs the first time,
 ; and keeps what is already set on an update.
-Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\setup.js"""; WorkingDir: "{app}"; Flags: runhidden
+Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\setup.js"" --defaults"; WorkingDir: "{app}"; Flags: runhidden
 Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\hooks.js"" install"; WorkingDir: "{app}"; Flags: runhidden; Tasks: hooks
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\Worklog.vbs"""; WorkingDir: "{app}"; Description: "{cm:OpenNow}"; Flags: postinstall nowait skipifsilent
 
