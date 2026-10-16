@@ -17,7 +17,13 @@ if (action !== 'install' && action !== 'uninstall') {
 const config = loadConfig();
 const file = path.join(config.claudeDir, 'settings.json');
 const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-const settings = before ? JSON.parse(before) : {};
+let settings = {};
+try { settings = before?.trim() ? JSON.parse(before) : {}; }
+catch (error) {
+	// Never overwrite a file we cannot read: it holds the person's other settings.
+	console.error(`อ่าน ${file} ไม่ได้ เพราะไม่ใช่ JSON ที่ถูกต้อง (${error.message}) จึงไม่แก้ไฟล์นี้`);
+	process.exit(1);
+}
 const after = JSON.stringify(action === 'install' ? addHooks(settings) : removeHooks(settings), null, 2) + '\n';
 
 if (before !== null && after.trim() === before.trim()) {
@@ -31,7 +37,10 @@ if (before !== null) {
 	fs.writeFileSync(backup, before);
 	console.log(`สำรอง settings.json เดิมไว้ที่ ${backup}`);
 }
-fs.writeFileSync(file, after);
+// Through a temporary file, so Claude Code never reads a half-written settings file.
+fs.mkdirSync(path.dirname(file), { recursive: true });
+fs.writeFileSync(`${file}.worklog-tmp`, after);
+fs.renameSync(`${file}.worklog-tmp`, file);
 console.log(action === 'install'
 	? `ติดตั้ง hook ใน ${file} แล้ว มีผลกับ session ที่เปิดใหม่หลังจากนี้`
 	: `เอา hook ของ Worklog ออกจาก ${file} แล้ว`);

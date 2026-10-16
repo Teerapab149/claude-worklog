@@ -130,7 +130,7 @@ test('a malformed path gets a 400 and the server keeps running, with security he
 	let scanned = false;
 	const original = globalThis.fetch;
 	globalThis.fetch = async (url, init) => { scanned = init.headers['content-type'] === 'application/json'; return original(url, init); };
-	try { await sessionEnd({ port: server.address().port }); }
+	try { await sessionEnd({ port: server.address().port, dataDir: claudeDir }); }
 	finally { globalThis.fetch = original; }
 	assert.equal(scanned, true);
 });

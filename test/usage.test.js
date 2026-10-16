@@ -95,3 +95,18 @@ test('a limit marked by hand holds until its reset, then lets the account go', (
 	assert.equal(acct.limited, false);
 	assert.equal(acct.marked, false);
 });
+
+test('hooks from another copy of Worklog are replaced, not run twice, and other hooks stay', () => {
+	const elsewhere = { type: 'command', command: 'node', args: ['--disable-warning=ExperimentalWarning', 'D:/old/worklog/bin/hook.js', 'pre-tool-use'] };
+	const theirs = { type: 'command', command: 'node', args: ['C:/tools/bin/hook.js', 'lint'] };
+	const settings = {
+		hooks: { PreToolUse: [{ matcher: 'Edit', hooks: [elsewhere, theirs] }] },
+		statusLine: { type: 'command', command: '"node" --disable-warning=ExperimentalWarning "D:/old/worklog/bin/statusline.js"' },
+	};
+	const out = addHooks(settings, 'node');
+	const all = Object.values(out.hooks).flat().flatMap(g => g.hooks);
+	assert.equal(all.filter(h => h.args?.includes('pre-tool-use')).length, 1);
+	assert.ok(all.includes(theirs) || all.some(h => h.args?.[1] === 'lint'));
+	assert.ok(!out.statusLine.command.includes('D:/old'));
+	assert.deepEqual(removeHooks(out).hooks.PreToolUse[0].hooks.map(h => h.args[1]), ['lint']);
+});

@@ -77,7 +77,13 @@ test('API settings refuse plain http off this machine and keep keys away from th
 	const gemini = { preset: 'gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash' };
 	// An empty key keeps the saved one, and preset defaults are stored as empty.
 	let next = merge(local, { summary: { provider: 'api', api: { ...gemini, apiKey: '' } } }, new Set()).next;
-	assert.deepEqual(next.summary.api, { preset: 'gemini', baseUrl: '', model: '', keys: { gemini: 'AIza-old', groq: 'gsk-1' } });
+	assert.deepEqual(next.summary.api.keys, { gemini: 'AIza-old', groq: 'gsk-1' });
+	assert.equal(next.summary.api.baseUrl, '');
+	assert.equal(next.summary.api.keyUrls.groq, 'https://api.groq.com/openai/v1');
+	// Pointing the preset somewhere else does not carry the saved key along.
+	const moved = merge(local, { summary: { api: { ...gemini, baseUrl: 'https://evil.example/v1' } } }, new Set()).next;
+	assert.equal(apiSettings(moved.summary).apiKey, '');
+	assert.equal(apiSettings(next.summary).apiKey, 'AIza-old');
 	next = merge(local, { summary: { api: { ...gemini, apiKey: 'AIza-new' } } }, new Set()).next;
 	assert.equal(next.summary.api.keys.gemini, 'AIza-new');
 	next = merge(local, { summary: { api: { ...gemini, clearKey: true } } }, new Set()).next;

@@ -137,10 +137,28 @@ export function openDb(file) {
 	// Hooks write while the server scans, so wait for the lock briefly.
 	db.exec('PRAGMA busy_timeout = 1000;');
 	db.function('normpath', { deterministic: true }, p => (typeof p === 'string' ? editPath(p) : null));
-	db.exec(SCHEMA);
-	migrate(db);
+	// The hook opens the database on every edit Claude makes, so the schema
+	// work runs only when this database is older than the code.
+	if (db.prepare('PRAGMA user_version').get().user_version < SCHEMA_VERSION) {
+		db.exec('BEGIN IMMEDIATE');
+		try {
+			db.exec(SCHEMA);
+			migrate(db);
+			db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`);
+			db.exec('COMMIT');
+		}
+		catch (error) {
+			db.exec('ROLLBACK');
+			throw error;
+		}
+	}
 	return wrap(db);
 }
+
+// Raise this whenever SCHEMA, ADDED_COLUMNS or STEPS change, or databases
+// that are already open will never see the change. Only ever add tables and
+// columns, so an older Worklog can still open a newer database.
+const SCHEMA_VERSION = 2;
 
 // Columns added after the first release, for databases made before them.
 const ADDED_COLUMNS = [

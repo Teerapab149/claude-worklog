@@ -9,7 +9,7 @@ import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
 import * as settings from './settings.js';
 import { createSummaryQueue } from './summaries.js';
-import { API_PRESETS, claudeStatus, testApi } from './summarizer.js';
+import { API_PRESETS, claudeStatus, savedKey, testApi } from './summarizer.js';
 import { watchLogs } from './watch.js';
 
 const PUBLIC_DIR = path.join(APP_ROOT, 'public');
@@ -120,7 +120,8 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		['POST', /^\/api\/summary\/claude-status$/, () => claudeStatus(config)],
 		['POST', /^\/api\/summary\/test$/, async (_, body) => {
 			const api = settings.checkApi(body);
-			const saved = config.summary.api?.keys?.[api.preset] ?? '';
+			// The saved key is used only for the address it belongs to; anywhere else needs the key typed in.
+			const saved = savedKey(config.summary, api.preset, api.baseUrl);
 			return testApi({ ...api, apiKey: api.apiKey || saved, needsKey: API_PRESETS[api.preset].needsKey });
 		}],
 		['POST', /^\/api\/update\/check$/, async () => {
@@ -219,7 +220,12 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 	// A page on another site can still send a plain form to 127.0.0.1, so a
 	// write must carry JSON (which needs a preflight this server never grants)
 	// and, when the browser names its origin, come from this server.
+	// Browsers say where a request came from. Anything but this page itself (or
+	// no browser at all, like the hooks) is turned away.
+	const sameSite = req => ['same-origin', 'none', undefined].includes(req.headers['sec-fetch-site']);
+
 	function writeAllowed(req) {
+		if (!sameSite(req)) return false;
 		if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return false;
 		const origin = req.headers.origin;
 		if (!origin) return true;
@@ -267,7 +273,13 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			return res.end();
 		}
 		const url = new URL(req.url, 'http://localhost');
-		if (url.pathname === '/api/alive' && req.method === 'GET') return presence.join(req, res);
+		if (url.pathname === '/api/alive' && req.method === 'GET') {
+			// A page elsewhere could otherwise hold this open and keep Worklog from ever closing.
+			if (!sameSite(req)) return sendJson(res, 403, { error: 'forbidden' });
+			return presence.join(req, res);
+		}
+		// Tells the launcher and the hooks that this port really is Worklog.
+		if (url.pathname === '/api/ping' && req.method === 'GET') return sendJson(res, 200, { app: 'worklog', version: VERSION, pages: presence.count() });
 		if (!url.pathname.startsWith('/api/')) {
 			if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'method_not_allowed' });
 			return serveStatic(res, url.pathname);

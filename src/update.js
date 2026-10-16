@@ -8,10 +8,13 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 export const REPO = 'Teerapab149/claude-worklog';
 const ASSET = /^Worklog-Setup-(\d+\.\d+\.\d+)\.exe$/;
 const EVERY_MS = 6 * 3600 * 1000;
+const DOWNLOAD_MS = 10 * 60 * 1000;
 
 /** True when version a is later than version b (both x.y.z). */
 export function isNewer(a, b) {
@@ -38,25 +41,58 @@ async function sha256(file) {
  * so the switch on the settings page takes effect at once.
  */
 export function createUpdater({ dir, current, enabled, fetch = globalThis.fetch, log = () => {}, run = spawn }) {
-	let state = { status: 'idle', current, latest: null, checkedAt: null, error: null };
+	let state = { status: 'idle', current, latest: null, checkedAt: null, error: null, last: null };
 	let file = null;
 	let busy = null;
 	let timer = null;
+	// Outside dir, which is emptied whenever Worklog is up to date.
+	const recordFile = path.join(path.dirname(dir), 'update.json');
+	const installLog = path.join(path.dirname(dir), 'update-install.log');
+	// What the last start of the installer was meant to do. If this start is
+	// still the old version, that install failed: say so, and do not retry it
+	// quietly on every close.
+	let failedVersion = null;
+	try {
+		const record = JSON.parse(fs.readFileSync(recordFile, 'utf8'));
+		const ok = record.to === current;
+		state.last = { ok, version: record.to, at: record.at };
+		if (!ok) failedVersion = record.to;
+		log(ok ? `อัปเดตเป็น ${record.to} แล้ว` : `อัปเดตเป็น ${record.to} ไม่สำเร็จ ดูรายละเอียดที่ ${installLog}`);
+		fs.rmSync(recordFile, { force: true });
+	}
+	catch {
+		// No install was started last time.
+	}
+
+	function runInstaller(visible) {
+		fs.writeFileSync(recordFile, JSON.stringify({ from: current, to: state.latest, at: new Date().toISOString() }));
+		const args = visible
+			? ['/SILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/relaunch=1', `/LOG=${installLog}`]
+			: ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', `/LOG=${installLog}`];
+		run(file, args, { detached: true, stdio: 'ignore' }).unref();
+		log(`เริ่มติดตั้ง Worklog ${state.latest}`);
+	}
 
 	async function download(asset, target) {
-		const res = await fetch(asset.browser_download_url, { headers: { 'user-agent': 'worklog-updater' } });
-		if (!res.ok) throw new Error(`ดาวน์โหลดไม่สำเร็จ (HTTP ${res.status})`);
-		const tmp = `${target}.part`;
-		fs.writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
-		const size = fs.statSync(tmp).size;
-		if (asset.size && size !== asset.size) throw new Error('ไฟล์ที่ดาวน์โหลดมาไม่ครบ');
-		// GitHub publishes each asset's SHA-256; a file that does not match is thrown away.
+		// GitHub publishes each asset's SHA-256. Without one there is nothing to
+		// check the file against, so it is never run.
 		const digest = String(asset.digest ?? '');
-		if (digest.startsWith('sha256:') && (await sha256(tmp)) !== digest.slice(7)) {
-			fs.rmSync(tmp, { force: true });
-			throw new Error('ไฟล์ที่ดาวน์โหลดมาไม่ตรงกับที่ GitHub บอกไว้');
+		if (!/^sha256:[0-9a-f]{64}$/i.test(digest)) throw new Error('release นี้ไม่มีค่า SHA-256 ให้ตรวจ จึงไม่ดาวน์โหลด');
+		const tmp = `${target}.part`;
+		try {
+			const res = await fetch(asset.browser_download_url, {
+				headers: { 'user-agent': 'worklog-updater' }, signal: AbortSignal.timeout(DOWNLOAD_MS),
+			});
+			if (!res.ok || !res.body) throw new Error(`ดาวน์โหลดไม่สำเร็จ (HTTP ${res.status})`);
+			// Straight to disk, so a 25 MB installer never sits in memory.
+			await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(tmp));
+			if (asset.size && fs.statSync(tmp).size !== asset.size) throw new Error('ไฟล์ที่ดาวน์โหลดมาไม่ครบ');
+			if ((await sha256(tmp)) !== digest.slice(7).toLowerCase()) throw new Error('ไฟล์ที่ดาวน์โหลดมาไม่ตรงกับที่ GitHub บอกไว้');
+			fs.renameSync(tmp, target);
 		}
-		fs.renameSync(tmp, target);
+		finally {
+			fs.rmSync(tmp, { force: true });
+		}
 	}
 
 	async function check() {
@@ -107,12 +143,19 @@ export function createUpdater({ dir, current, enabled, fetch = globalThis.fetch,
 			return busy;
 		},
 		status: () => ({ ...state }),
-		/** Runs the downloaded installer once Worklog has closed. Returns true when it started one. */
+		/** Runs the downloaded installer quietly once Worklog has closed. Returns true when it started one. */
 		installOnExit() {
 			clearInterval(timer);
 			if (!enabled() || state.status !== 'ready' || !file || !fs.existsSync(file)) return false;
-			run(file, ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'], { detached: true, stdio: 'ignore' }).unref();
-			log(`เริ่มติดตั้ง Worklog ${state.latest}`);
+			if (state.latest === failedVersion) return false;
+			runInstaller(false);
+			return true;
+		},
+		/** Runs the installer now with its progress showing, then opens Worklog again. For the button on the settings page. */
+		installNow() {
+			clearInterval(timer);
+			if (state.status !== 'ready' || !file || !fs.existsSync(file)) return false;
+			runInstaller(true);
 			return true;
 		},
 	};

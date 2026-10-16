@@ -137,9 +137,14 @@ export function merge(local, input, knownAccounts) {
 		if (s.api !== undefined) {
 			const api = checkApi(s.api);
 			const keys = { ...local.summary?.api?.keys };
+			const keyUrls = { ...local.summary?.api?.keyUrls };
+			// A key remembers the address it was given for (see savedKey).
+			for (const p of Object.keys(keys)) {
+				if (!keyUrls[p]) keyUrls[p] = local.summary?.api?.preset === p && local.summary.api.baseUrl ? local.summary.api.baseUrl : API_PRESETS[p]?.baseUrl;
+			}
 			// An empty key field keeps the key already saved; clearKey removes it.
-			if (s.api.clearKey === true) delete keys[api.preset];
-			else if (api.apiKey) keys[api.preset] = api.apiKey;
+			if (s.api.clearKey === true) { delete keys[api.preset]; delete keyUrls[api.preset]; }
+			else if (api.apiKey) { keys[api.preset] = api.apiKey; keyUrls[api.preset] = api.baseUrl; }
 			const preset = API_PRESETS[api.preset];
 			summary.api = {
 				preset: api.preset,
@@ -147,6 +152,7 @@ export function merge(local, input, knownAccounts) {
 				baseUrl: api.baseUrl === preset.baseUrl ? '' : api.baseUrl,
 				model: api.model === preset.model ? '' : api.model,
 				keys,
+				keyUrls,
 			};
 		}
 		next.summary = summary;

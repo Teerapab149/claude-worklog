@@ -24,7 +24,7 @@ function fakeGitHub(release, body) {
 	const fetch = async url => {
 		calls.push(url);
 		if (url.includes('/releases/latest')) return release ? { ok: true, status: 200, json: async () => release } : { ok: false, status: 404 };
-		return { ok: true, status: 200, arrayBuffer: async () => body };
+		return new Response(body);
 	};
 	return { fetch, calls };
 }
@@ -71,4 +71,46 @@ test('nothing is asked or run when switched off, up to date, or without a releas
 		fetch: fakeGitHub({ tag_name: 'v0.2.0', assets: [{ name: 'Worklog-Setup-0.2.0.exe' }] }).fetch });
 	assert.equal((await same.check()).status, 'latest');
 	assert.equal(same.installOnExit(), false);
+});
+
+test('a release without a published SHA-256 is never downloaded', async t => {
+	const dir = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-upd-')), 'updates');
+	t.after(() => fs.rmSync(path.dirname(dir), { recursive: true, force: true }));
+	const asset = { name: 'Worklog-Setup-0.2.0.exe', size: 3, browser_download_url: 'https://example.invalid/x.exe' };
+	const { fetch, calls } = fakeGitHub({ tag_name: 'v0.2.0', assets: [asset] }, Buffer.from('abc'));
+	const updater = createUpdater({ dir, current: '0.1.0', enabled: () => true, fetch, run: () => assert.fail('must not run') });
+	const state = await updater.check();
+	assert.equal(state.status, 'error');
+	assert.equal(calls.length, 1);
+});
+
+test('the next start says whether the last install worked, and a failed one is not retried quietly', async t => {
+	const home = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-upd-'));
+	t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+	const dir = path.join(home, 'updates');
+	const body = Buffer.from('installer');
+	const asset = { name: 'Worklog-Setup-0.2.0.exe', size: body.length, browser_download_url: 'https://example.invalid/x.exe',
+		digest: `sha256:${crypto.createHash('sha256').update(body).digest('hex')}` };
+	const release = { tag_name: 'v0.2.0', assets: [asset] };
+	const ran = [];
+	const run = (file, args) => { ran.push(args); return { unref() {} }; };
+
+	// 0.1.0 starts the install of 0.2.0 when it closes.
+	const first = createUpdater({ dir, current: '0.1.0', enabled: () => true, fetch: fakeGitHub(release, body).fetch, run });
+	await first.check();
+	assert.equal(first.installOnExit(), true);
+	assert.ok(ran[0].includes('/VERYSILENT'));
+
+	// The install did not take: the next start is still 0.1.0.
+	const again = createUpdater({ dir, current: '0.1.0', enabled: () => true, fetch: fakeGitHub(release, body).fetch, run });
+	assert.deepEqual({ ok: again.status().last.ok, version: again.status().last.version }, { ok: false, version: '0.2.0' });
+	await again.check();
+	assert.equal(again.installOnExit(), false);
+	// The button runs it with its progress showing and opens Worklog afterwards.
+	assert.equal(again.installNow(), true);
+	assert.ok(ran[1].includes('/SILENT') && ran[1].includes('/relaunch=1'));
+
+	// This time it worked.
+	const after = createUpdater({ dir, current: '0.2.0', enabled: () => true, fetch: fakeGitHub(release, body).fetch, run });
+	assert.equal(after.status().last.ok, true);
 });

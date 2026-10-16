@@ -31,6 +31,12 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 CloseApplications=yes
+; Held while setup runs, so a Worklog started meanwhile waits instead of
+; running from files that are being replaced.
+SetupMutex=WorklogSetup
+VersionInfoVersion={#AppVersion}
+VersionInfoProductName=Worklog
+VersionInfoDescription=Worklog Setup
 
 [CustomMessages]
 DesktopIcon=สร้างไอคอนบนหน้าจอ
@@ -44,11 +50,9 @@ Name: "hooks"; Description: "{cm:HooksTask}"
 [Files]
 Source: "{#Stage}\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
-; Files left from an older version that this one no longer ships.
-[InstallDelete]
-Type: filesandordirs; Name: "{app}\bin"
-Type: filesandordirs; Name: "{app}\src"
-Type: filesandordirs; Name: "{app}\public"
+; Files are replaced one by one and never deleted first, so an install that
+; stops halfway (a locked file, a closed laptop) leaves a Worklog that still runs.
+; When a version stops shipping a file, add an [InstallDelete] entry for that one file.
 
 [Icons]
 Name: "{autoprograms}\Worklog"; Filename: "{sys}\wscript.exe"; Parameters: """{app}\Worklog.vbs"""; WorkingDir: "{app}"; IconFilename: "{app}\public\icon.ico"; Comment: "งานที่ทำกับ AI ค้างอยู่ตรงไหน"
@@ -60,6 +64,14 @@ Name: "{autodesktop}\Worklog"; Filename: "{sys}\wscript.exe"; Parameters: """{ap
 Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\setup.js"" --defaults"; WorkingDir: "{app}"; Flags: runhidden
 Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\hooks.js"" install"; WorkingDir: "{app}"; Flags: runhidden; Tasks: hooks
 Filename: "{sys}\wscript.exe"; Parameters: """{app}\Worklog.vbs"""; WorkingDir: "{app}"; Description: "{cm:OpenNow}"; Flags: postinstall nowait skipifsilent
+; "ติดตั้งตอนนี้" on the settings page closes Worklog, runs setup with /relaunch=1, and expects it back.
+Filename: "{sys}\wscript.exe"; Parameters: """{app}\Worklog.vbs"""; WorkingDir: "{app}"; Flags: nowait; Check: ShouldRelaunch
 
 [UninstallRun]
 Filename: "{app}\node\node.exe"; Parameters: "--disable-warning=ExperimentalWarning ""{app}\bin\hooks.js"" uninstall"; WorkingDir: "{app}"; Flags: runhidden; RunOnceId: "RemoveHooks"
+
+[Code]
+function ShouldRelaunch: Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;

@@ -2,6 +2,7 @@
 // calls one of these and prints the result. Each returns the JSON object to
 // print, or null to stay silent and let Claude Code carry on as usual.
 
+import { readPort } from './port.js';
 import { resolveProject } from './projects.js';
 import { activeSessions } from './queries.js';
 import { checkEdit, describeSession, recordEdit } from './overlap.js';
@@ -105,7 +106,7 @@ export function sessionStart(db, config, input, now = Date.now()) {
 
 /** Asks the running dashboard to read the session that just ended. */
 export async function sessionEnd(config) {
-	const port = config.port ?? 4317;
+	const port = readPort(config);
 	try {
 		await fetch(`http://127.0.0.1:${port}/api/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(1000) });
 	}

@@ -9,11 +9,17 @@ export const HOOK_SCRIPT = path.join(APP_ROOT, 'bin', 'hook.js');
 export const STATUS_SCRIPT = path.join(APP_ROOT, 'bin', 'statusline.js');
 
 const slashes = p => p.replace(/\\/g, '/').toLowerCase();
-const isHookScript = arg => typeof arg === 'string' && slashes(arg) === slashes(HOOK_SCRIPT);
+const EVENTS = new Set(['session-start', 'pre-tool-use', 'session-end']);
+const isHookScript = arg => typeof arg === 'string' && slashes(arg).endsWith('/bin/hook.js');
 
-/** True for a handler this app installed. */
+/**
+ * True for a handler any copy of Worklog installed, wherever that copy lives
+ * (a source checkout, the installed app, an older folder), so installing
+ * from one copy replaces another instead of running both.
+ */
 export function isOurs(handler) {
-	return Array.isArray(handler?.args) && handler.args.some(isHookScript);
+	const args = Array.isArray(handler?.args) ? handler.args : [];
+	return args.some(isHookScript) && args.some(a => EVENTS.has(a));
 }
 
 // Exec form (command plus args) starts node directly, so a path with spaces
@@ -32,7 +38,8 @@ export function ourHooks(node = process.execPath) {
 
 /** True for the status line this app installed. */
 export function isOurStatusLine(statusLine) {
-	return typeof statusLine?.command === 'string' && slashes(statusLine.command).includes(slashes(STATUS_SCRIPT));
+	const command = typeof statusLine?.command === 'string' ? slashes(statusLine.command) : '';
+	return command.includes('/bin/statusline.js') && command.includes('--disable-warning=experimentalwarning');
 }
 
 // The status line takes one command string. Forward slashes and quotes keep

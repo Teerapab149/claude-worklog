@@ -207,16 +207,33 @@ export const API_PRESETS = {
 	custom: { label: 'กำหนดเอง', baseUrl: '', model: '', needsKey: false, keyUrl: null },
 };
 
+const trimUrl = url => String(url ?? '').replace(/\/+$/, '');
+
+/**
+ * A saved key goes only to the address it was saved for, so changing the
+ * address, by hand or by a forged request, can never send it somewhere else.
+ * Keys saved before addresses were recorded belong to the address in use then.
+ */
+export function savedKey(summary, preset, baseUrl) {
+	const api = summary?.api ?? {};
+	const key = api.keys?.[preset];
+	if (!key) return '';
+	const own = api.keyUrls?.[preset]
+		?? (api.preset === preset && api.baseUrl ? api.baseUrl : API_PRESETS[preset]?.baseUrl);
+	return trimUrl(own) === trimUrl(baseUrl) ? key : '';
+}
+
 /** The API settings in force, with the preset filling whatever was left empty. */
 export function apiSettings(summary) {
 	const api = summary?.api ?? {};
 	const preset = API_PRESETS[api.preset] ? api.preset : 'gemini';
 	const base = API_PRESETS[preset];
+	const baseUrl = trimUrl(api.baseUrl || base.baseUrl);
 	return {
 		preset,
-		baseUrl: (api.baseUrl || base.baseUrl).replace(/\/+$/, ''),
+		baseUrl,
 		model: api.model || base.model,
-		apiKey: api.keys?.[preset] ?? '',
+		apiKey: savedKey(summary, preset, baseUrl),
 		needsKey: base.needsKey,
 	};
 }
