@@ -5,9 +5,37 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { suggestRoots } from './setup.js';
+import { API_PRESETS, apiSettings } from './summarizer.js';
 
 export const MODELS = ['haiku', 'sonnet'];
 export const OVERLAP_MODES = ['deny_once', 'ask', 'context', 'off'];
+export const PROVIDERS = ['claude', 'api'];
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/**
+ * Checks the API fields from the page: a known preset, an address that is
+ * https (or http on this machine, for Ollama) and a model name. Used both for
+ * saving and for the test button.
+ */
+export function checkApi(input) {
+	const preset = String(input?.preset ?? '');
+	if (!API_PRESETS[preset]) throw new SettingsError('apiPreset', 'ไม่รู้จักผู้ให้บริการนี้');
+	const baseUrl = String(input?.baseUrl ?? '').trim().replace(/\/+$/, '');
+	let url;
+	try { url = new URL(baseUrl); }
+	catch { throw new SettingsError('apiBaseUrl', 'ที่อยู่ API ไม่ถูกต้อง ให้ใส่แบบ https://...'); }
+	if (url.protocol !== 'https:' && !(url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname))) {
+		throw new SettingsError('apiBaseUrl', 'ที่อยู่ API ต้องขึ้นต้นด้วย https:// ยกเว้นที่รันในเครื่องนี้');
+	}
+	const model = String(input?.model ?? '').trim();
+	if (!model || model.length > 120 || /\s/.test(model)) throw new SettingsError('apiModel', 'ใส่ชื่อโมเดล เช่น gemini-2.5-flash');
+	const apiKey = input?.apiKey === undefined ? undefined : String(input.apiKey).trim();
+	if (apiKey && (apiKey.length > 400 || /\s/.test(apiKey))) throw new SettingsError('apiKey', 'API key ไม่ถูกต้อง');
+	return { preset, baseUrl, model, apiKey };
+}
+
+/** The last four characters, enough to tell keys apart without showing them. */
+const keyHint = key => (key ? key.slice(-4) : null);
 
 /** A mistake the person can fix; the message is shown on the page as is. */
 export class SettingsError extends Error {
@@ -50,7 +78,14 @@ export function editable(db, config) {
 		suggestedRoots: suggestRoots(cwds),
 		exclude: config.exclude,
 		accounts: accounts.map(a => ({ uuid: a.uuid, label: config.accounts?.[a.uuid] ?? a.label, sessions: a.sessions })),
-		summary: { enabled: config.summary.enabled, model: config.summary.model, autoDays: config.summary.autoDays },
+		summary: {
+			enabled: config.summary.enabled, model: config.summary.model, autoDays: config.summary.autoDays,
+			provider: config.summary.provider === 'api' ? 'api' : 'claude',
+			api: (({ preset, baseUrl, model }) => ({ preset, baseUrl, model }))(apiSettings(config.summary)),
+			// Keys never leave the server; the page only learns which presets have one.
+			keyHints: Object.fromEntries(Object.entries(config.summary.api?.keys ?? {}).map(([p, k]) => [p, keyHint(k)]).filter(([, h]) => h)),
+			presets: API_PRESETS,
+		},
 		overlap: { windowMinutes: config.overlap.windowMinutes, preToolUse: config.overlap.preToolUse },
 	};
 }
@@ -95,6 +130,25 @@ export function merge(local, input, knownAccounts) {
 			summary.model = s.model;
 		}
 		if (s.autoDays !== undefined) summary.autoDays = whole('autoDays', s.autoDays, 1, 60, 'วัน');
+		if (s.provider !== undefined) {
+			if (!PROVIDERS.includes(s.provider)) throw new SettingsError('summary', 'ไม่รู้จักวิธีสรุปนี้');
+			summary.provider = s.provider;
+		}
+		if (s.api !== undefined) {
+			const api = checkApi(s.api);
+			const keys = { ...local.summary?.api?.keys };
+			// An empty key field keeps the key already saved; clearKey removes it.
+			if (s.api.clearKey === true) delete keys[api.preset];
+			else if (api.apiKey) keys[api.preset] = api.apiKey;
+			const preset = API_PRESETS[api.preset];
+			summary.api = {
+				preset: api.preset,
+				// Values equal to the preset's are left empty, so a better default later reaches this person too.
+				baseUrl: api.baseUrl === preset.baseUrl ? '' : api.baseUrl,
+				model: api.model === preset.model ? '' : api.model,
+				keys,
+			};
+		}
 		next.summary = summary;
 	}
 	if (input.overlap !== undefined) {

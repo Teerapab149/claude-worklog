@@ -1,5 +1,6 @@
-// Asks Claude (through the claude CLI in print mode, on the person's own
-// subscription) to summarize a session or a project.
+// Summarizes a session or a project, either through the claude CLI in print
+// mode on the person's own subscription, or through an API that speaks the
+// OpenAI chat format (Gemini, Groq, OpenRouter, Ollama and others).
 
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -193,4 +194,142 @@ export function runClaude({ system, input, config }) {
 		});
 		child.stdin.end(input);
 	});
+}
+
+// Summaries through any API that speaks the OpenAI chat format. Each preset
+// fills in the address and a model that summarizes Thai well; the person can
+// change both. A key is kept per preset, so switching back does not lose it.
+export const API_PRESETS = {
+	gemini: { label: 'Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai', model: 'gemini-2.5-flash', needsKey: true, keyUrl: 'https://aistudio.google.com/apikey' },
+	groq: { label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', needsKey: true, keyUrl: 'https://console.groq.com/keys' },
+	openrouter: { label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemini-2.5-flash', needsKey: true, keyUrl: 'https://openrouter.ai/keys' },
+	ollama: { label: 'Ollama (ในเครื่อง)', baseUrl: 'http://localhost:11434/v1', model: 'qwen2.5:7b', needsKey: false, keyUrl: null },
+	custom: { label: 'กำหนดเอง', baseUrl: '', model: '', needsKey: false, keyUrl: null },
+};
+
+/** The API settings in force, with the preset filling whatever was left empty. */
+export function apiSettings(summary) {
+	const api = summary?.api ?? {};
+	const preset = API_PRESETS[api.preset] ? api.preset : 'gemini';
+	const base = API_PRESETS[preset];
+	return {
+		preset,
+		baseUrl: (api.baseUrl || base.baseUrl).replace(/\/+$/, ''),
+		model: api.model || base.model,
+		apiKey: api.keys?.[preset] ?? '',
+		needsKey: base.needsKey,
+	};
+}
+
+const JSON_RULE = `ตอบเป็น JSON object เดียวเท่านั้น ไม่มีข้อความอื่นนอก JSON ใช้ชื่อฟิลด์และชนิดตาม JSON Schema นี้:\n${JSON.stringify(SUMMARY_SCHEMA)}`;
+
+function apiError(status, text, host) {
+	let detail = '';
+	try {
+		// Gemini wraps its error in a list.
+		const parsed = JSON.parse(text);
+		const body = Array.isArray(parsed) ? parsed[0] : parsed;
+		detail = String(body?.error?.message ?? body?.error ?? body?.message ?? '').slice(0, 300);
+	}
+	catch {
+		detail = text.slice(0, 200);
+	}
+	// Gemini answers a bad key with 400 rather than 401.
+	const badKey = status === 401 || status === 403 || (status === 400 && /api.?key/i.test(detail));
+	const kind = badKey ? 'auth' : status === 429 ? 'rate_limit' : 'failed';
+	const lead = kind === 'auth' ? `${host} ไม่รับ API key นี้` : kind === 'rate_limit' ? `${host} ให้รอก่อน เพราะเรียกถี่หรือใช้เกินโควต้า` : `${host} ตอบกลับด้วย HTTP ${status}`;
+	return new SummarizerError(detail ? `${lead} (${detail})` : lead, kind);
+}
+
+async function callApi(api, path, { body, timeoutMs, fetch }) {
+	const host = new URL(api.baseUrl).host;
+	if (api.needsKey && !api.apiKey) throw new SummarizerError(`ยังไม่ได้ใส่ API key ของ ${host}`, 'auth');
+	const headers = { 'content-type': 'application/json' };
+	if (api.apiKey) headers.authorization = `Bearer ${api.apiKey}`;
+	let res;
+	try {
+		res = await fetch(`${api.baseUrl}${path}`, {
+			method: body ? 'POST' : 'GET', headers, body: body ? JSON.stringify(body) : undefined,
+			signal: AbortSignal.timeout(timeoutMs),
+		});
+	}
+	catch (error) {
+		if (error.name === 'TimeoutError') throw new SummarizerError(`${host} ใช้เวลานานเกินไป`, 'timeout');
+		const code = error.cause?.code ?? '';
+		const why = code === 'ECONNREFUSED' ? 'ไม่มีโปรแกรมรออยู่ที่นั่น ถ้าเป็น Ollama ให้เปิด Ollama ก่อน'
+			: code === 'ENOTFOUND' ? 'หาที่อยู่นี้ไม่เจอ ตรวจที่อยู่ API หรืออินเทอร์เน็ต'
+			: code || error.message;
+		throw new SummarizerError(`ต่อ ${host} ไม่ได้ ${why}`, 'failed');
+	}
+	const text = await res.text();
+	if (!res.ok) throw apiError(res.status, text, host);
+	try { return JSON.parse(text); }
+	catch { throw new SummarizerError(`${host} ตอบกลับมาไม่ใช่ JSON`, 'bad_output'); }
+}
+
+/** Pulls the JSON object out of a reply, even one wrapped in a code fence or a sentence. */
+function parseReply(content) {
+	const text = String(content ?? '');
+	const start = text.indexOf('{'), end = text.lastIndexOf('}');
+	if (start < 0 || end <= start) throw new SummarizerError('API ตอบกลับมาไม่มี JSON', 'bad_output');
+	try { return JSON.parse(text.slice(start, end + 1)); }
+	catch { throw new SummarizerError('API ตอบกลับมาเป็น JSON ที่อ่านไม่ได้', 'bad_output'); }
+}
+
+/** Runs one summary through the chat completions API. Same shape as runClaude. */
+export async function runApi({ system, input, config, fetch = globalThis.fetch }) {
+	const api = apiSettings(config.summary);
+	const data = await callApi(api, '/chat/completions', {
+		fetch, timeoutMs: config.summary.timeoutMs,
+		body: {
+			model: api.model,
+			temperature: 0.2,
+			response_format: { type: 'json_object' },
+			messages: [{ role: 'system', content: `${system}\n\n${JSON_RULE}` }, { role: 'user', content: input }],
+		},
+	});
+	const raw = parseReply(data.choices?.[0]?.message?.content);
+	return { summary: cleanSummary(raw), costUsd: Number(data.usage?.cost) || 0 };
+}
+
+/** Runs a summary with whichever summarizer the settings name right now. */
+export function runSummary(args) {
+	return args.config.summary.provider === 'api' ? runApi(args) : runClaude(args);
+}
+
+/** The model name stored with a summary. */
+export const summaryModel = summary => (summary.provider === 'api' ? apiSettings(summary).model : summary.model);
+
+/**
+ * Checks an API the person is about to use: that the key is accepted, which
+ * models it offers, and that the chosen model answers in JSON. Returns
+ * { ok, message, models } and never throws.
+ */
+export async function testApi(api, { fetch = globalThis.fetch, timeoutMs = 30000 } = {}) {
+	let models = [];
+	try {
+		const list = await callApi(api, '/models', { fetch, timeoutMs });
+		models = (list.data ?? list.models ?? []).map(m => String(m.id ?? m.name ?? '').replace(/^models\//, '')).filter(Boolean).sort();
+	}
+	catch (error) {
+		// Some servers have no model list; a key they refuse still shows up below.
+		if (error.kind === 'auth') return { ok: false, message: error.message, models };
+	}
+	if (models.length && !models.includes(api.model)) {
+		return { ok: false, message: `ไม่พบโมเดล ${api.model} ในรายการ เลือกจากรายการที่มีให้แทน`, models };
+	}
+	try {
+		const data = await callApi(api, '/chat/completions', {
+			fetch, timeoutMs,
+			body: {
+				model: api.model, max_tokens: 50, temperature: 0, response_format: { type: 'json_object' },
+				messages: [{ role: 'user', content: 'ตอบเป็น JSON {"ok": true} เท่านั้น' }],
+			},
+		});
+		parseReply(data.choices?.[0]?.message?.content);
+		return { ok: true, message: `ใช้ได้ ${api.model} ตอบกลับเป็น JSON ถูกต้อง`, models };
+	}
+	catch (error) {
+		return { ok: false, message: error.message, models };
+	}
 }

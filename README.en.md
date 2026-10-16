@@ -19,7 +19,7 @@ Everything runs on your machine. There is no outside server and nothing to sign 
 
 - Node.js 24 or newer. It uses the built in `node:sqlite`, so there are no packages to install.
 - Claude Code or Codex, already used on this computer.
-- For AI summaries, the `claude` command, signed in.
+- For AI summaries, the `claude` command signed in, or an API key for Gemini, Groq or OpenRouter, or Ollama on this machine.
 
 ## Install
 
@@ -75,7 +75,7 @@ Each hook takes about 200 ms. If one fails it writes to `data/hook.log` and neve
 - The page only accepts connections from this machine (`127.0.0.1`) and refuses requests addressed to any other host name.
 - What it reads is stored in `data/index.db` in this folder and goes nowhere else.
 - An installed copy asks GitHub whether a newer version exists each time it opens and every 6 hours while open; the request carries none of your data. When there is one, it downloads the installer from this repository's release, checks it against the SHA-256 GitHub publishes, and installs it after you close the window. Turn this off on the settings page. A copy run from source never asks and never updates itself.
-- Apart from that, the one thing that leaves your machine is the AI summary, which sends part of a conversation to Claude through `claude -p` on your own account. Keys, tokens and passwords it can spot are masked first. Summaries use that account's quota. On first start it summarizes every session with new messages in the last 7 days (set with `summary.autoDays`), one at a time with Haiku, and it waits when every account is limited. Turn them off with `"summary": { "enabled": false }`.
+- Apart from that, the one thing that leaves your machine is the AI summary, which sends part of a conversation to Claude through `claude -p` on your own account, or, if you pick "API แบบ OpenAI" (an OpenAI-style API) on the settings page, to the provider you chose instead (Gemini, Groq, OpenRouter or an address you enter). With Ollama nothing leaves the machine. API keys are kept in `config.local.json` on this machine, and the page never receives a key back. Some free tiers may use what you send to improve their models; read the provider's terms first. Keys, tokens and passwords it can spot are masked first. Summaries use that account's quota. On first start it summarizes every session with new messages in the last 7 days (set with `summary.autoDays`), one at a time with Haiku, and it waits when every account is limited. Turn them off with `"summary": { "enabled": false }`.
 
 ## Resource use
 
@@ -85,7 +85,7 @@ The Claude Code hooks keep working while the app is closed, since they read the 
 
 ## Configuration
 
-The settings page in Worklog edits the common ones: project folders, excluded folders, account names, AI summaries and overlap warnings. Saving applies them at once, except turning AI summaries back on, which starts the next time Worklog opens. Changing project folders regroups projects without reading every log again.
+The settings page in Worklog edits the common ones: project folders, excluded folders, account names, AI summaries (Claude Code CLI or an OpenAI-style API, with a button to test the key) and overlap warnings. Saving applies them at once, except turning AI summaries back on, which starts the next time Worklog opens. Changing project folders regroups projects without reading every log again.
 
 All settings live in `config.local.json`; anything the page does not show can be edited there. See [config.example.json](config.example.json).
 

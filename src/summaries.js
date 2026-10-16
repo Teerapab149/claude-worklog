@@ -2,7 +2,7 @@
 // that need one, one claude call at a time.
 
 import { buildDigest, readConversation } from './digest.js';
-import { PROJECT_PROMPT, SESSION_PROMPT, runClaude } from './summarizer.js';
+import { PROJECT_PROMPT, SESSION_PROMPT, runSummary, summaryModel } from './summarizer.js';
 import { sessionTitle } from './session-state.js';
 import { adapterFor } from './sources/index.js';
 
@@ -78,7 +78,7 @@ function projectInput(db, key) {
 	return { input: lines.join('\n'), sourceTs };
 }
 
-export function createSummaryQueue({ db, config, run = runClaude, log = () => {}, now = Date.now }) {
+export function createSummaryQueue({ db, config, run = runSummary, log = () => {}, now = Date.now }) {
 	const queue = [];
 	const queued = new Set();
 	let running = null;
@@ -106,7 +106,7 @@ export function createSummaryQueue({ db, config, run = runClaude, log = () => {}
 		const adapter = adapterFor(s.tool);
 		const digest = buildDigest(s, readConversation(s.jsonl_path, adapter), { maxChars: config.summary.maxChars, adapter });
 		const out = await run({ system: SESSION_PROMPT, input: digest, config });
-		saveSummary(db, 'session', id, { ...out, sourceTs: contentTs(s), model: config.summary.model });
+		saveSummary(db, 'session', id, { ...out, sourceTs: contentTs(s), model: summaryModel(config.summary) });
 		if (s.project_key && !s.is_automated) enqueue('project', s.project_key);
 	}
 
@@ -116,7 +116,7 @@ export function createSummaryQueue({ db, config, run = runClaude, log = () => {}
 		const current = getSummary(db, 'project', key);
 		if (current?.data && current.source_ts && current.source_ts >= input.sourceTs) return;
 		const out = await run({ system: PROJECT_PROMPT, input: input.input, config });
-		saveSummary(db, 'project', key, { ...out, sourceTs: input.sourceTs, model: config.summary.model });
+		saveSummary(db, 'project', key, { ...out, sourceTs: input.sourceTs, model: summaryModel(config.summary) });
 	}
 
 	async function pump() {
@@ -190,6 +190,7 @@ export function createSummaryQueue({ db, config, run = runClaude, log = () => {}
 	function status() {
 		return {
 			enabled: config.summary.enabled,
+			provider: config.summary.provider === 'api' ? 'api' : 'claude',
 			running: running ? { kind: running.kind, ref: running.ref } : null,
 			pending: queue.map(i => ({ kind: i.kind, ref: i.ref })),
 			paused: paused && paused.until > now() ? paused : null,

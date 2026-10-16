@@ -58,6 +58,11 @@ const DEFAULTS = {
 		timeoutMs: 180000,
 		// Path to the claude executable, when it is not on PATH.
 		claudeBin: null,
+		// 'claude' runs the claude CLI; 'api' calls an API in the OpenAI chat
+		// format. api: { preset, baseUrl, model, keys: { preset: key } }, where an
+		// empty baseUrl or model takes the preset's (see API_PRESETS).
+		provider: 'claude',
+		api: { preset: 'gemini', baseUrl: '', model: '', keys: {} },
 	},
 	// An installed copy updates itself from GitHub releases when this is on.
 	updates: { auto: true },

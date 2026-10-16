@@ -241,8 +241,13 @@ function pollWhileBusy(anyBusy) {
 }
 
 function pausedNote(summarizer) {
-	if (!summarizer?.paused) return '';
-	return `<p class="paused">${esc(PAUSE_TEXT[summarizer.paused.kind] ?? summarizer.paused.message)}</p>`;
+	const p = summarizer?.paused;
+	if (!p) return '';
+	// With an API the provider's own message says more; the fix is on the settings page.
+	const text = summarizer.provider === 'api'
+		? `สรุปด้วย AI หยุดไว้ก่อน ${p.message} ${p.kind === 'rate_limit' ? 'ระบบจะลองใหม่เอง' : 'ตรวจ API ในหน้าตั้งค่า แล้วกดสรุปอีกครั้ง'}`
+		: PAUSE_TEXT[p.kind] ?? p.message;
+	return `<p class="paused">${esc(text)}</p>`;
 }
 
 function workingNote(s) {
@@ -497,6 +502,100 @@ function field(id, label, control, help = '') {
 	return `<div class="field"><label class="field-label" for="${id}">${label}</label>${control}${help ? `<p class="field-help">${help}</p>` : ''}</div>`;
 }
 
+// The API part of the summary settings. Presets and which ones have a saved
+// key come from the server; the keys themselves never do.
+let apiPresets = {};
+let keyHints = {};
+
+function keyPlaceholder(preset) {
+	if (keyHints[preset]) return `บันทึกไว้แล้ว ลงท้าย ${keyHints[preset]} เว้นว่างไว้เพื่อใช้ key เดิม`;
+	return apiPresets[preset]?.needsKey ? 'วาง API key ที่นี่' : 'ไม่ต้องใส่ก็ได้';
+}
+
+function keyHelp(preset) {
+	const p = apiPresets[preset];
+	if (!p) return '';
+	if (preset === 'ollama') return 'ติดตั้ง Ollama แล้วโหลดโมเดลที่ต้องการไว้ก่อน ทุกอย่างอยู่ในเครื่องนี้ ไม่มีอะไรส่งออกไป';
+	return p.keyUrl ? `ขอ key ได้ที่ <a href="${esc(p.keyUrl)}" target="_blank" rel="noopener noreferrer">${esc(new URL(p.keyUrl).host)}</a> key เก็บไว้ในเครื่องนี้เท่านั้น` : 'key เก็บไว้ในเครื่องนี้เท่านั้น';
+}
+
+function apiFields(summary) {
+	apiPresets = summary.presets;
+	keyHints = summary.keyHints ?? {};
+	const a = summary.api;
+	return `
+		${field('apiPreset', 'ผู้ให้บริการ', `<select class="input input-select" id="apiPreset" name="apiPreset">
+			${Object.entries(apiPresets).map(([v, p]) => `<option value="${v}" ${a.preset === v ? 'selected' : ''}>${esc(p.label)}</option>`).join('')}</select>`)}
+		${field('apiBaseUrl', 'ที่อยู่ API', `<input class="input mono-input" id="apiBaseUrl" name="apiBaseUrl" spellcheck="false" value="${esc(a.baseUrl)}">`)}
+		${field('apiModel', 'โมเดล', `<input class="input mono-input" id="apiModel" name="apiModel" list="apiModels" spellcheck="false" value="${esc(a.model)}"><datalist id="apiModels"></datalist>`,
+			'กดทดสอบแล้วจะมีรายชื่อโมเดลที่ใช้ได้ให้เลือก')}
+		${field('apiKey', 'API key', `<input class="input mono-input" id="apiKey" name="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="${esc(keyPlaceholder(a.preset))}">`,
+			`<span id="keyHelp">${keyHelp(a.preset)}</span>`)}
+		<div class="mark-actions">
+			<button class="btn-copy" type="button" data-test-api>ทดสอบ</button>
+			<button class="btn-copy" type="button" data-clear-key ${keyHints[a.preset] ? '' : 'hidden'}>ลบ key ที่บันทึกไว้</button>
+			<span class="save-status" id="api-status" role="status"></span>
+		</div>`;
+}
+
+/** The API fields as the server expects them, for saving and for testing. */
+function apiBody(form) {
+	const el = form.elements;
+	return { preset: el.apiPreset.value, baseUrl: el.apiBaseUrl.value, model: el.apiModel.value, apiKey: el.apiKey.value };
+}
+
+app.addEventListener('change', event => {
+	const form = event.target.closest('#settings');
+	if (!form) return;
+	if (event.target.name === 'provider') {
+		for (const pane of form.querySelectorAll('.provider-pane')) pane.hidden = pane.dataset.provider !== event.target.value;
+	}
+	if (event.target.name === 'apiPreset') {
+		const preset = event.target.value, p = apiPresets[preset];
+		const el = form.elements;
+		if (preset !== 'custom') { el.apiBaseUrl.value = p.baseUrl; el.apiModel.value = p.model; }
+		el.apiKey.value = '';
+		el.apiKey.placeholder = keyPlaceholder(preset);
+		form.querySelector('#keyHelp').innerHTML = keyHelp(preset);
+		form.querySelector('[data-clear-key]').hidden = !keyHints[preset];
+		form.querySelector('#apiModels').innerHTML = '';
+		form.querySelector('#api-status').textContent = '';
+	}
+});
+
+app.addEventListener('click', async event => {
+	const test = event.target.closest('[data-test-api]');
+	const clear = event.target.closest('[data-clear-key]');
+	if (!test && !clear) return;
+	const form = event.target.closest('#settings');
+	const status = form.querySelector('#api-status');
+	if (clear) {
+		form.dataset.clearKey = form.elements.apiPreset.value;
+		form.elements.apiKey.value = '';
+		form.elements.apiKey.placeholder = 'จะลบ key เมื่อกดบันทึก';
+		clear.hidden = true;
+		return;
+	}
+	test.disabled = true;
+	status.className = 'save-status';
+	status.textContent = 'กำลังทดสอบ';
+	try {
+		const res = await fetch('/api/summary/test', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(apiBody(form)) });
+		const data = await res.json();
+		if (!res.ok) throw new Error(data.field ? data.error : 'ทดสอบไม่สำเร็จ');
+		status.className = `save-status ${data.ok ? 'is-ok' : 'is-error'}`;
+		status.textContent = data.ok ? `${data.message} กดบันทึกเพื่อใช้ค่านี้` : data.message;
+		form.querySelector('#apiModels').innerHTML = data.models.slice(0, 200).map(m => `<option value="${esc(m)}">`).join('');
+	}
+	catch (error) {
+		status.className = 'save-status is-error';
+		status.textContent = error.message;
+	}
+	finally {
+		test.disabled = false;
+	}
+});
+
 function updateText(version, u) {
 	if (!u.auto) return `เวอร์ชัน ${version} ปิดการอัปเดตเองไว้`;
 	if (u.status === 'ready') return `เวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว จะติดตั้งเองหลังจากปิดหน้าต่าง Worklog`;
@@ -563,9 +662,15 @@ async function renderSettings() {
 			: '<p class="empty">ยังไม่พบบัญชี Claude ใน log</p>')}
 		${box('สรุปด้วย AI', `<div class="fields">
 			<label class="switch"><input type="checkbox" name="summaryEnabled" ${ed.summary.enabled ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>สรุปงานด้วย AI</span></label>
-			<p class="field-help">ใช้โควต้าของบัญชี Claude ที่ claude CLI login อยู่ ${summaryRunning || !ed.summary.enabled ? '' : 'ถ้าเพิ่งเปิด การสรุปจะเริ่มเมื่อปิดหน้าต่าง Worklog แล้วเปิดใหม่'}</p>
-			<fieldset class="choices"><legend class="field-label">โมเดล</legend>
-				${Object.entries(SUMMARY_MODEL).map(([v, t]) => radio('model', v, t, ed.summary.model === v)).join('')}</fieldset>
+			${summaryRunning || !ed.summary.enabled ? '' : '<p class="field-help">ถ้าเพิ่งเปิด การสรุปจะเริ่มเมื่อปิดหน้าต่าง Worklog แล้วเปิดใหม่</p>'}
+			<fieldset class="choices"><legend class="field-label">ใช้อะไรสรุป</legend>
+				${radio('provider', 'claude', 'Claude Code CLI ใช้โควต้าของบัญชี Claude ที่ login ไว้ในเครื่องนี้', ed.summary.provider === 'claude')}
+				${radio('provider', 'api', 'API แบบ OpenAI เช่น Gemini, Groq, OpenRouter หรือ Ollama ในเครื่อง', ed.summary.provider === 'api')}</fieldset>
+			<div class="provider-pane" data-provider="claude" ${ed.summary.provider === 'claude' ? '' : 'hidden'}>
+				<fieldset class="choices"><legend class="field-label">โมเดล</legend>
+					${Object.entries(SUMMARY_MODEL).map(([v, t]) => radio('model', v, t, ed.summary.model === v)).join('')}</fieldset>
+			</div>
+			<div class="provider-pane fields" data-provider="api" ${ed.summary.provider === 'api' ? '' : 'hidden'}>${apiFields(ed.summary)}</div>
 			${field('autoDays', 'สรุปเองเฉพาะงานที่มีข้อความใหม่ในกี่วันล่าสุด', `<span class="unit"><input class="input input-num" id="autoDays" name="autoDays" type="number" min="1" max="60" step="1" value="${ed.summary.autoDays}"> วัน</span>`,
 				'งานที่เก่ากว่านี้จะสรุปเมื่อคุณกดปุ่มสรุปในหน้าโปรเจคเท่านั้น')}
 		</div>`)}
@@ -606,7 +711,10 @@ app.addEventListener('submit', async event => {
 		roots: lines(el.roots.value),
 		exclude: lines(el.exclude.value),
 		accounts: Object.fromEntries([...form.querySelectorAll('[data-account]')].map(i => [i.dataset.account, i.value])),
-		summary: { enabled: el.summaryEnabled.checked, model: el.model.value, autoDays: Number(el.autoDays.value) },
+		summary: {
+			enabled: el.summaryEnabled.checked, model: el.model.value, autoDays: Number(el.autoDays.value), provider: el.provider.value,
+			...(el.provider.value === 'api' ? { api: { ...apiBody(form), clearKey: form.dataset.clearKey === el.apiPreset.value } } : {}),
+		},
 		overlap: { windowMinutes: Number(el.windowMinutes.value), preToolUse: el.preToolUse.value },
 		...(el.updatesAuto ? { updates: { auto: el.updatesAuto.checked } } : {}),
 	};
@@ -620,7 +728,8 @@ app.addEventListener('submit', async event => {
 		if (!res.ok) {
 			status.className = 'save-status is-error';
 			status.textContent = data.field ? data.error : 'บันทึกไม่สำเร็จ';
-			const target = { roots: el.roots, exclude: el.exclude, autoDays: el.autoDays, windowMinutes: el.windowMinutes }[data.field];
+			const target = { roots: el.roots, exclude: el.exclude, autoDays: el.autoDays, windowMinutes: el.windowMinutes,
+				apiBaseUrl: el.apiBaseUrl, apiModel: el.apiModel, apiKey: el.apiKey }[data.field];
 			target?.focus();
 			return;
 		}
