@@ -1,0 +1,159 @@
+// Local web server. Listens on 127.0.0.1 only and rescans the logs when they change.
+
+import fs from 'node:fs';
+import http from 'node:http';
+import path from 'node:path';
+import { APP_ROOT } from './config.js';
+import { scan } from './indexer.js';
+import { overlaps } from './overlap.js';
+import * as queries from './queries.js';
+import { createSummaryQueue } from './summaries.js';
+import { watchLogs } from './watch.js';
+
+const PUBLIC_DIR = path.join(APP_ROOT, 'public');
+const TYPES = {
+	'.html': 'text/html; charset=utf-8',
+	'.js': 'text/javascript; charset=utf-8',
+	'.css': 'text/css; charset=utf-8',
+	'.svg': 'image/svg+xml',
+};
+const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+export function createApp({ db, config, queue = null, log = console.log }) {
+	let lastScan = null;
+
+	function runScan() {
+		const started = Date.now();
+		try {
+			const stats = scan(db, config);
+			lastScan = { at: Date.now(), ms: Date.now() - started, stats, error: null };
+			queue?.enqueueStale();
+		}
+		catch (error) {
+			lastScan = { at: Date.now(), ms: Date.now() - started, stats: null, error: error.message };
+			log(`scan failed: ${error.stack}`);
+		}
+		return lastScan;
+	}
+
+	const routes = [
+		['GET', /^\/api\/overview$/, () => {
+			const active = queries.activeSessions(db, config);
+			return {
+				scan: lastScan,
+				summarizer: queue?.status() ?? null,
+				accounts: queries.accounts(db, config),
+				next: queries.nextUp(db, config),
+				overlaps: overlaps(db, config, active),
+				active,
+				projects: queries.projects(db, queue),
+			};
+		}],
+		['POST', /^\/api\/projects\/(.+)\/summarize$/, ([key]) => summarize('project', key)],
+		['POST', /^\/api\/sessions\/([\w-]+)\/summarize$/, ([id]) => summarize('session', id)],
+		['GET', /^\/api\/projects\/(.+)$/, ([key]) => {
+			const data = queries.project(db, key, queue);
+			return data ? { accounts: queries.accounts(db, config), summarizer: queue?.status() ?? null, project: data } : null;
+		}],
+		['GET', /^\/api\/sessions\/([\w-]+)$/, ([id]) => {
+			const data = queries.session(db, id, queue);
+			return data ? { accounts: queries.accounts(db, config), summarizer: queue?.status() ?? null, session: data } : null;
+		}],
+		['POST', /^\/api\/scan$/, () => ({ scan: runScan() })],
+	];
+
+	function summarize(kind, ref) {
+		if (!queue) return { queued: false, reason: 'disabled' };
+		const exists = kind === 'session'
+			? db.getSession(ref)
+			: db.raw.prepare('SELECT 1 FROM projects WHERE key = ?').get(ref);
+		if (!exists) return null;
+		// A project summary is built from its session summaries, so refresh
+		// any session that has none or is out of date first.
+		if (kind === 'project') {
+			const rows = db.raw.prepare(`SELECT s.id, s.last_human_ts, s.last_assistant_ts, m.source_ts, m.json
+				FROM sessions s LEFT JOIN summaries m ON m.kind = 'session' AND m.ref = s.id
+				WHERE s.project_key = ? AND s.is_automated = 0 AND s.human_turns > 0
+				ORDER BY s.last_ts DESC LIMIT 8`).all(ref);
+			for (const r of rows.reverse()) {
+				const newest = [r.last_human_ts, r.last_assistant_ts].filter(Boolean).sort().pop();
+				if (!r.json || (newest && r.source_ts < newest)) queue.enqueue('session', r.id, { manual: true });
+			}
+		}
+		queue.enqueue(kind, ref, { manual: true });
+		return { queued: true, summarizer: queue.status() };
+	}
+
+	function sendJson(res, status, body) {
+		res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+		res.end(JSON.stringify(body));
+	}
+
+	function serveStatic(res, pathname) {
+		const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1));
+		const file = path.resolve(PUBLIC_DIR, rel);
+		if (!file.startsWith(PUBLIC_DIR + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
+			res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+			return res.end('ไม่พบหน้านี้');
+		}
+		res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-cache' });
+		fs.createReadStream(file).pipe(res);
+	}
+
+	function handle(req, res) {
+		// Refuse requests addressed to any other host name, so a web page
+		// elsewhere cannot reach this server through DNS rebinding.
+		const host = (req.headers.host ?? '').replace(/:\d+$/, '');
+		if (!ALLOWED_HOSTS.has(host)) {
+			res.writeHead(403);
+			return res.end();
+		}
+		const url = new URL(req.url, 'http://localhost');
+		if (!url.pathname.startsWith('/api/')) {
+			if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'method_not_allowed' });
+			return serveStatic(res, url.pathname);
+		}
+		for (const [method, pattern, handler] of routes) {
+			const match = url.pathname.match(pattern);
+			if (!match) continue;
+			if (req.method !== method) return sendJson(res, 405, { error: 'method_not_allowed' });
+			try {
+				const body = handler(match.slice(1).map(decodeURIComponent));
+				return body ? sendJson(res, 200, body) : sendJson(res, 404, { error: 'not_found' });
+			}
+			catch (error) {
+				log(`${req.method} ${url.pathname} failed: ${error.stack}`);
+				return sendJson(res, 500, { error: 'internal' });
+			}
+		}
+		sendJson(res, 404, { error: 'not_found' });
+	}
+
+	return { handle, runScan };
+}
+
+/** Folders whose .jsonl files are the session logs of each tool that is read. */
+function logDirs(config) {
+	return [
+		config.sources.claude && path.join(config.claudeDir, 'projects'),
+		config.sources.codex && path.join(config.codexDir, 'sessions'),
+	].filter(Boolean);
+}
+
+export function startServer({ db, config, port = 4317, watch = {}, log = console.log, run }) {
+	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
+	const app = createApp({ db, config, queue, log });
+	const server = http.createServer(app.handle);
+	return new Promise((resolve, reject) => {
+		server.once('error', reject);
+		server.listen(port, '127.0.0.1', () => {
+			server.off('error', reject);
+			// Scanning starts only once the port is ours, so a second copy
+			// that cannot listen exits without touching the database.
+			app.runScan();
+			const watcher = watchLogs(logDirs(config), app.runScan, { log, ...watch });
+			server.on('close', () => watcher.close());
+			resolve(server);
+		});
+	});
+}

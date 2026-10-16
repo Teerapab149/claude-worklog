@@ -1,0 +1,196 @@
+// Asks Claude (through the claude CLI in print mode, on the person's own
+// subscription) to summarize a session or a project.
+
+import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+export const SUMMARY_SCHEMA = {
+	type: 'object',
+	additionalProperties: false,
+	required: ['headline', 'status', 'done', 'in_progress', 'next_steps', 'waiting_on', 'deadlines'],
+	properties: {
+		headline: { type: 'string', description: 'หนึ่งประโยค ว่างานนี้ทำอะไรและตอนนี้อยู่ตรงไหน' },
+		status: { type: 'string', enum: ['done', 'in_progress', 'blocked', 'waiting', 'abandoned'] },
+		done: { type: 'array', items: { type: 'string' }, maxItems: 6 },
+		in_progress: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+		next_steps: { type: 'array', items: { type: 'string' }, maxItems: 5 },
+		waiting_on: { type: 'array', items: { type: 'string' }, maxItems: 4 },
+		deadlines: {
+			type: 'array', maxItems: 4,
+			items: {
+				type: 'object', additionalProperties: false, required: ['date', 'text'],
+				properties: {
+					date: { type: ['string', 'null'], description: 'YYYY-MM-DD ถ้าระบุวันได้ ไม่งั้น null' },
+					text: { type: 'string' },
+				},
+			},
+		},
+	},
+};
+
+const STYLE_RULES = `กฎการเขียน (สำคัญมาก):
+- เขียนภาษาไทยธรรมดา ประโยคสั้น ชัด แบบที่คนเขียนโน้ตให้ตัวเอง
+- ห้ามใช้จุดกึ่งกลาง (\u00B7) ลูกศร (\u2192 \u2190) em dash (\u2014) อีโมจิ หรือสัญลักษณ์ตกแต่ง
+- ห้ามใช้เครื่องหมาย + แทนคำว่า "และ"
+- ห้ามขึ้นต้นด้วยคำเกริ่น เช่น "สรุป:" "แน่นอน" "Here's"
+- ชื่อไฟล์ ชื่อโค้ด และศัพท์เทคนิค เขียนตามต้นฉบับได้`;
+
+export const SESSION_PROMPT = `คุณช่วยจดบันทึกงานที่ผู้ใช้ทำร่วมกับผู้ช่วย AI เขียนโค้ด (Claude Code, Codex หรือเครื่องมืออื่น) เพื่อให้ผู้ใช้กลับมาทำต่อได้ทันทีหลังจากหยุดไปหลายวัน
+อ่านบทสนทนาของหนึ่ง session แล้วสรุปตาม schema:
+- headline: ประโยคเดียว บอกว่า session นี้ทำงานอะไร และจบที่ตรงไหน
+- status: done ถ้างานที่ขอเสร็จแล้ว, in_progress ถ้ายังทำค้าง, blocked ถ้าติดปัญหาที่ต้องแก้ก่อน, waiting ถ้ารอคนอื่นหรือรอผู้ใช้ตัดสินใจ, abandoned ถ้าเลิกทำไปแล้ว
+- done: สิ่งที่ทำเสร็จจริงใน session นี้ (ไม่ใช่สิ่งที่วางแผนไว้)
+- in_progress: สิ่งที่เริ่มแล้วแต่ยังไม่เสร็จ
+- next_steps: สิ่งที่ควรทำต่อเป็นลำดับ เขียนให้ลงมือได้ทันที
+- waiting_on: สิ่งที่รอจากคนอื่นหรือรอผู้ใช้ตอบ
+- deadlines: กำหนดส่งหรือวันสอบที่ถูกพูดถึง แปลงเป็นวันที่จริงโดยอิงเวลาในบทสนทนา
+ถ้า session จบเพราะติด usage limit หรือถูกหยุดกลางคัน ให้ถือว่างานล่าสุดยังไม่เสร็จ
+อย่าเดาสิ่งที่ไม่มีในบทสนทนา ถ้าไม่มีข้อมูลให้ใช้ array ว่าง
+
+${STYLE_RULES}`;
+
+export const PROJECT_PROMPT = `คุณช่วยจดบันทึกภาพรวมของหนึ่งโปรเจคที่ผู้ใช้ทำร่วมกับผู้ช่วย AI เขียนโค้ด (Claude Code, Codex หรือเครื่องมืออื่น) ผ่านหลาย session และอาจหลายบัญชี
+ข้อมูลที่ได้รับคือสรุปของแต่ละ session เรียงจากใหม่ไปเก่า รวมสรุปเป็นสถานะปัจจุบันของทั้งโปรเจคตาม schema
+- ข้อมูลจาก session ที่ใหม่กว่าถือว่าถูกต้องกว่า ถ้าขัดกัน
+- done ให้เลือกเฉพาะชิ้นงานสำคัญที่เสร็จแล้ว
+- next_steps คือสิ่งที่ควรทำต่อในโปรเจคนี้ เรียงจากสำคัญที่สุด
+- ถ้าเห็นว่าสอง session ทำงานชิ้นเดียวกันซ้ำ ให้ใส่ไว้ใน in_progress ว่าควรตรวจว่าทับกันหรือไม่
+
+${STYLE_RULES}`;
+
+// Characters the person never wants to see in generated text, written as
+// escapes so this file stays free of them too.
+const REPLACEMENTS = [
+	[/\s*[\u2014\u2013]\s*/g, ', '],
+	[/\s*\u00B7\s*/g, ', '],
+	[/\s*\u2192\s*/g, ' แล้ว '],
+	[/\s*\u2190\s*/g, ' จาก '],
+	[/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, ''],
+	[/^(สรุป|Summary)\s*[:：]\s*/i, ''],
+	[/ {2,}/g, ' '],
+	[/,\s*,/g, ','],
+];
+
+export function cleanText(text) {
+	let out = String(text ?? '');
+	for (const [pattern, replacement] of REPLACEMENTS) out = out.replace(pattern, replacement);
+	return out.trim().replace(/^,\s*/, '').replace(/,$/, '');
+}
+
+export function cleanSummary(raw) {
+	const list = v => (Array.isArray(v) ? v.map(cleanText).filter(Boolean) : []);
+	const status = SUMMARY_SCHEMA.properties.status.enum.includes(raw?.status) ? raw.status : 'in_progress';
+	return {
+		headline: cleanText(raw?.headline),
+		status,
+		done: list(raw?.done),
+		in_progress: list(raw?.in_progress),
+		next_steps: list(raw?.next_steps),
+		waiting_on: list(raw?.waiting_on),
+		deadlines: Array.isArray(raw?.deadlines)
+			? raw.deadlines
+				.map(d => ({ date: /^\d{4}-\d{2}-\d{2}$/.test(d?.date ?? '') ? d.date : null, text: cleanText(d?.text) }))
+				.filter(d => d.text)
+			: [],
+	};
+}
+
+export class SummarizerError extends Error {
+	constructor(message, kind) {
+		super(message);
+		this.kind = kind; // 'auth' | 'rate_limit' | 'missing_cli' | 'timeout' | 'bad_output' | 'failed'
+	}
+}
+
+function classify(message) {
+	if (/authenticat|oauth|log ?in|credential|401/i.test(message)) return 'auth';
+	if (/rate.?limit|usage limit|429|quota/i.test(message)) return 'rate_limit';
+	return 'failed';
+}
+
+/**
+ * On Windows the npm shim is a .cmd file, which Node will not spawn without
+ * a shell. Look for the real executable so arguments pass through untouched.
+ */
+export function resolveClaudeBin(configured) {
+	if (configured) return configured;
+	if (process.platform !== 'win32') return 'claude';
+	for (const dir of (process.env.PATH ?? '').split(path.delimiter)) {
+		if (!dir) continue;
+		const exe = path.join(dir, 'claude.exe');
+		if (fs.existsSync(exe)) return exe;
+		const shim = path.join(dir, 'claude.cmd');
+		if (fs.existsSync(shim)) {
+			const match = fs.readFileSync(shim, 'utf8').match(/"%dp0%\\([^"]+\.exe)"/i);
+			if (match) {
+				const target = path.join(dir, match[1]);
+				if (fs.existsSync(target)) return target;
+			}
+		}
+	}
+	return 'claude';
+}
+
+/** Runs claude -p once and returns { summary, costUsd }. */
+export function runClaude({ system, input, config }) {
+	const opts = config.summary;
+	const cwd = path.join(config.dataDir, 'summarizer');
+	fs.mkdirSync(cwd, { recursive: true });
+	const args = [
+		'-p',
+		'--model', opts.model,
+		'--no-session-persistence',
+		'--tools', '',
+		'--setting-sources', '',
+		'--output-format', 'json',
+		'--system-prompt', system,
+		'--json-schema', JSON.stringify(SUMMARY_SCHEMA),
+	];
+
+	return new Promise((resolve, reject) => {
+		let child;
+		try {
+			child = spawn(resolveClaudeBin(opts.claudeBin), args, {
+				cwd,
+				windowsHide: true,
+				// Lets this project's own hooks recognise and skip these runs.
+				env: { ...process.env, WORKLOG_SUMMARIZER: '1' },
+			});
+		}
+		catch (error) {
+			return reject(new SummarizerError(error.message, 'missing_cli'));
+		}
+		let stdout = '', stderr = '';
+		const timer = setTimeout(() => {
+			child.kill();
+			reject(new SummarizerError('claude ใช้เวลานานเกินไป', 'timeout'));
+		}, opts.timeoutMs);
+		child.stdout.on('data', d => { stdout += d; });
+		child.stderr.on('data', d => { stderr += d; });
+		child.on('error', error => {
+			clearTimeout(timer);
+			reject(new SummarizerError(error.message, error.code === 'ENOENT' ? 'missing_cli' : 'failed'));
+		});
+		child.on('close', code => {
+			clearTimeout(timer);
+			let data;
+			try { data = JSON.parse(stdout); }
+			catch {
+				const message = (stderr || stdout || `claude exited with ${code}`).trim().slice(0, 500);
+				return reject(new SummarizerError(message, classify(message)));
+			}
+			if (data.is_error) {
+				const message = String(data.result ?? data.subtype ?? 'error').slice(0, 500);
+				return reject(new SummarizerError(message, classify(message)));
+			}
+			let raw = data.structured_output;
+			if (!raw && typeof data.result === 'string') {
+				try { raw = JSON.parse(data.result.replace(/^```(?:json)?\s*|\s*```$/g, '')); }
+				catch { return reject(new SummarizerError('claude ตอบกลับมาไม่ใช่ JSON', 'bad_output')); }
+			}
+			resolve({ summary: cleanSummary(raw), costUsd: Number(data.total_cost_usd) || 0 });
+		});
+		child.stdin.end(input);
+	});
+}

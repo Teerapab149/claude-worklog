@@ -1,0 +1,21 @@
+{
+  "name": "claude-worklog",
+  "version": "0.1.0",
+  "description": "Reads Claude Code session logs across accounts and projects so you can see where each piece of work stopped.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "setup": "node --disable-warning=ExperimentalWarning bin/setup.js",
+    "start":"node --disable-warning=ExperimentalWarning bin/serve.js",
+    "autostart:install": "node --disable-warning=ExperimentalWarning bin/autostart.js install",
+    "autostart:uninstall": "node --disable-warning=ExperimentalWarning bin/autostart.js uninstall",
+    "install-hooks": "node --disable-warning=ExperimentalWarning bin/hooks.js install",
+    "uninstall-hooks": "node --disable-warning=ExperimentalWarning bin/hooks.js uninstall",
+    "scan":"node --disable-warning=ExperimentalWarning bin/scan.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
+  }
+}

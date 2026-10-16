@@ -1,0 +1,15 @@
+{
+  "roots": ["C:\\projects"],
+  "exclude": ["C:\\projects\\sandbox\\"],
+  "projectNames": {
+    "shop": "Corner Shop"
+  },
+  "accounts": {
+    "00000000-0000-0000-0000-000000000000": "บัญชีส่วนตัว"
+  },
+  "overlap": {
+    "windowMinutes": 30,
+    "preToolUse": "deny_once"
+  },
+  "port": 4317
+}
