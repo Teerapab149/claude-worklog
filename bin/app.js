@@ -12,9 +12,10 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { appBrowser, installedAppId, windowArgs } from '../src/app-window.js';
-import { configFile, loadConfig } from '../src/config.js';
+import { INSTALLED, VERSION, configFile, loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { startServer } from '../src/server.js';
+import { createUpdater } from '../src/update.js';
 
 const config = loadConfig();
 const port = Number(process.env.PORT) || config.port || 4317;
@@ -25,6 +26,11 @@ const logFile = path.join(config.dataDir, 'server.log');
 if (fs.existsSync(logFile) && fs.statSync(logFile).size > 1024 * 1024) fs.renameSync(logFile, `${logFile}.old`);
 const log = (...parts) => fs.appendFileSync(logFile, `${new Date().toISOString()} ${parts.join(' ')}\n`);
 process.on('uncaughtException', error => { log(`app crashed: ${error.stack}`); process.exit(1); });
+
+// Only a copy from the installer updates itself.
+const updater = INSTALLED
+	? createUpdater({ dir: path.join(config.dataDir, 'updates'), current: VERSION, enabled: () => config.updates.auto, log })
+	: null;
 
 function openWindow() {
 	const browser = appBrowser(config);
@@ -54,12 +60,14 @@ function shutdown() {
 	server.closeAllConnections();
 	server.close();
 	db.close();
+	updater?.installOnExit();
 	process.exit(0);
 }
 
 try {
-	server = await startServer({ db, config, configFile: configFile(), appInstalled: () => Boolean(installedAppId(profile)), port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
+	server = await startServer({ db, config, configFile: configFile(), appInstalled: () => Boolean(installedAppId(profile)), updater, port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
 	log(`เปิดแอปที่ ${url}`);
+	updater?.start();
 }
 catch (error) {
 	if (error.code !== 'EADDRINUSE') throw error;

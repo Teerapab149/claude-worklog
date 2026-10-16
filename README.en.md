@@ -74,7 +74,8 @@ Each hook takes about 200 ms. If one fails it writes to `data/hook.log` and neve
 
 - The page only accepts connections from this machine (`127.0.0.1`) and refuses requests addressed to any other host name.
 - What it reads is stored in `data/index.db` in this folder and goes nowhere else.
-- The one thing that leaves your machine is the AI summary, which sends part of a conversation to Claude through `claude -p` on your own account. Keys, tokens and passwords it can spot are masked first. Summaries use that account's quota. On first start it summarizes every session with new messages in the last 7 days (set with `summary.autoDays`), one at a time with Haiku, and it waits when every account is limited. Turn them off with `"summary": { "enabled": false }`.
+- An installed copy asks GitHub whether a newer version exists each time it opens and every 6 hours while open; the request carries none of your data. When there is one, it downloads the installer from this repository's release, checks it against the SHA-256 GitHub publishes, and installs it after you close the window. Turn this off on the settings page. A copy run from source never asks and never updates itself.
+- Apart from that, the one thing that leaves your machine is the AI summary, which sends part of a conversation to Claude through `claude -p` on your own account. Keys, tokens and passwords it can spot are masked first. Summaries use that account's quota. On first start it summarizes every session with new messages in the last 7 days (set with `summary.autoDays`), one at a time with Haiku, and it waits when every account is limited. Turn them off with `"summary": { "enabled": false }`.
 
 ## Resource use
 

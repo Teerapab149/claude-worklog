@@ -5,14 +5,17 @@ import { fileURLToPath } from 'node:url';
 
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+export const VERSION = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'package.json'), 'utf8')).version;
+// A copy put in place by the installer carries a file named "installed".
+export const INSTALLED = fs.existsSync(path.join(APP_ROOT, 'installed'));
+
 /**
- * Where config.local.json and the data folder live. A copy put in place by
- * the installer carries a file named "installed" and keeps them in the
- * person's own app data folder, so an update or an uninstall leaves them
- * alone. A copy run from source keeps them next to the code.
+ * Where config.local.json and the data folder live. An installed copy keeps
+ * them in the person's own app data folder, so an update or an uninstall
+ * leaves them alone. A copy run from source keeps them next to the code.
  */
 export const WORK_HOME = process.env.WORKLOG_HOME
-	|| (fs.existsSync(path.join(APP_ROOT, 'installed'))
+	|| (INSTALLED
 		? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'Worklog')
 		: APP_ROOT);
 
@@ -56,6 +59,8 @@ const DEFAULTS = {
 		// Path to the claude executable, when it is not on PATH.
 		claudeBin: null,
 	},
+	// An installed copy updates itself from GitHub releases when this is on.
+	updates: { auto: true },
 };
 
 export const configFile = () => process.env.WORKLOG_CONFIG || path.join(WORK_HOME, 'config.local.json');
@@ -85,6 +90,7 @@ export function resolveConfig(overrides = {}) {
 		...overrides,
 		overlap: { ...DEFAULTS.overlap, ...overrides.overlap },
 		summary: { ...DEFAULTS.summary, ...overrides.summary },
+		updates: { ...DEFAULTS.updates, ...overrides.updates },
 	};
 	config.claudeDir = config.claudeDir || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 	config.codexDir = config.codexDir || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');

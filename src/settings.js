@@ -61,7 +61,7 @@ export function editable(db, config) {
  */
 export function merge(local, input, knownAccounts) {
 	const next = structuredClone(local);
-	const changed = { folders: false, accounts: false, summaryEnabled: false };
+	const changed = { folders: false, accounts: false, summaryEnabled: false, updatesOn: false };
 	if (input.roots !== undefined || input.exclude !== undefined) {
 		const roots = input.roots === undefined ? local.roots ?? [] : folders('roots', input.roots);
 		const exclude = input.exclude === undefined ? local.exclude ?? [] : folders('exclude', input.exclude);
@@ -106,6 +106,12 @@ export function merge(local, input, knownAccounts) {
 			overlap.preToolUse = o.preToolUse;
 		}
 		next.overlap = overlap;
+	}
+	if (input.updates !== undefined) {
+		const auto = input.updates?.auto;
+		if (typeof auto !== 'boolean') throw new SettingsError('updates', 'รูปแบบการเปิดปิดไม่ถูกต้อง');
+		changed.updatesOn = auto && !(local.updates?.auto ?? true);
+		next.updates = { ...local.updates, auto };
 	}
 	return { next, changed };
 }

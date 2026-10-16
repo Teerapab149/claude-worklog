@@ -497,6 +497,25 @@ function field(id, label, control, help = '') {
 	return `<div class="field"><label class="field-label" for="${id}">${label}</label>${control}${help ? `<p class="field-help">${help}</p>` : ''}</div>`;
 }
 
+function updateText(version, u) {
+	if (!u.auto) return `เวอร์ชัน ${version} ปิดการอัปเดตเองไว้`;
+	if (u.status === 'ready') return `เวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว จะติดตั้งเองหลังจากปิดหน้าต่าง Worklog`;
+	if (u.status === 'downloading') return `กำลังดาวน์โหลดเวอร์ชัน ${u.latest}`;
+	if (u.status === 'checking' || u.status === 'idle') return `เวอร์ชัน ${version} กำลังตรวจหาเวอร์ชันใหม่`;
+	if (u.status === 'error') return `เวอร์ชัน ${version} ตรวจหาเวอร์ชันใหม่ไม่สำเร็จ ${u.error ?? ''}`.trim();
+	return `เวอร์ชัน ${version} เป็นเวอร์ชันล่าสุดแล้ว${u.checkedAt ? ` ตรวจเมื่อ ${formatTime(u.checkedAt)}` : ''}`;
+}
+
+app.addEventListener('click', async event => {
+	const button = event.target.closest('[data-update-check]');
+	if (!button) return;
+	button.disabled = true;
+	button.textContent = 'กำลังตรวจ';
+	try { await api('/api/update/check', { method: 'POST' }); }
+	catch { button.textContent = 'ตรวจไม่สำเร็จ'; return; }
+	await route({ quiet: true });
+});
+
 /** installed comes from the server, which looks in the window's profile; null when not opened from the shortcut. */
 function windowSetting(installed) {
 	if (installed) return '<p class="field-help">Worklog ติดตั้งเป็นแอปแล้ว แถบด้านบนของหน้าต่างใช้สีเดียวกับหน้า</p>';
@@ -518,7 +537,7 @@ app.addEventListener('click', async event => {
 });
 
 async function renderSettings() {
-	const { scan, settings: st, editable: ed, canSave, summaryRunning, appInstalled } = await api('/api/settings');
+	const { scan, settings: st, editable: ed, canSave, summaryRunning, appInstalled, version, update } = await api('/api/settings');
 	showScan(scan);
 	const fact = (k, v) => `<div class="fact"><dt>${k}</dt><dd>${v}</dd></div>`;
 	const on = (yes, a, b) => `<span class="pill ${yes ? 'on' : 'off'}">${yes ? a : b}</span>`;
@@ -556,6 +575,12 @@ async function renderSettings() {
 				${Object.entries(OVERLAP_MODE).map(([v, t]) => radio('preToolUse', v, t, ed.overlap.preToolUse === v)).join('')}</fieldset>
 			<p class="field-help">hook ของ Worklog ${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')}</p>
 		</div>`)}
+		${update ? box('อัปเดต', `<div class="fields">
+			<label class="switch"><input type="checkbox" name="updatesAuto" ${update.auto ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>อัปเดตเองเมื่อมีเวอร์ชันใหม่</span></label>
+			<div class="how-row"><p>${esc(updateText(version, update))}</p>
+				<button class="btn-copy" type="button" data-update-check ${update.auto ? '' : 'disabled'}>ตรวจตอนนี้</button></div>
+			<p class="field-help">Worklog ถาม GitHub ว่ามีเวอร์ชันใหม่ไหม ถ้ามีจะดาวน์โหลดไว้ แล้วติดตั้งเองหลังจากปิดหน้าต่าง ครั้งถัดไปที่เปิดจะเป็นเวอร์ชันใหม่ ค่าที่ตั้งไว้และข้อมูลยังอยู่ครบ</p>
+		</div>`) : ''}
 		<div class="save-bar">
 			<button class="btn-save" type="submit" ${canSave ? '' : 'disabled'}>บันทึก</button>
 			<p class="save-status" id="save-status" role="status"></p>
@@ -583,6 +608,7 @@ app.addEventListener('submit', async event => {
 		accounts: Object.fromEntries([...form.querySelectorAll('[data-account]')].map(i => [i.dataset.account, i.value])),
 		summary: { enabled: el.summaryEnabled.checked, model: el.model.value, autoDays: Number(el.autoDays.value) },
 		overlap: { windowMinutes: Number(el.windowMinutes.value), preToolUse: el.preToolUse.value },
+		...(el.updatesAuto ? { updates: { auto: el.updatesAuto.checked } } : {}),
 	};
 	status.className = 'save-status';
 	status.textContent = 'กำลังบันทึก';

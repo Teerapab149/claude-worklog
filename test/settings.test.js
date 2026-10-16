@@ -24,7 +24,7 @@ test('merge keeps fields it does not know and only changes what was sent', () =>
 	assert.equal(next.port, 4400);
 	assert.deepEqual(next.accounts, { a: 'งาน', other: 'เก็บไว้' });
 	assert.deepEqual(next.summary, { claudeBin: 'C:\\bin\\claude.exe', enabled: false, autoDays: 14 });
-	assert.deepEqual(changed, { folders: true, accounts: true, summaryEnabled: true });
+	assert.deepEqual(changed, { folders: true, accounts: true, summaryEnabled: true, updatesOn: false });
 	assert.equal(local.accounts.a, 'เดิม');
 	fs.rmSync(tmp, { recursive: true, force: true });
 });

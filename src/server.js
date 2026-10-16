@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { APP_ROOT, readLocalConfig, resolveConfig, writeLocalConfig } from './config.js';
+import { APP_ROOT, VERSION, readLocalConfig, resolveConfig, writeLocalConfig } from './config.js';
 import { regroup, scan } from './indexer.js';
 import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
@@ -55,7 +55,8 @@ function createPresence(idle) {
 
 // configFile is where the settings page saves; without one the page is read only.
 // appInstalled tells whether the app window's profile has Worklog installed as an app.
-export function createApp({ db, config, configFile = null, appInstalled = null, queue = null, log = console.log, idle = null }) {
+// updater is there only in a copy from the installer (see src/update.js).
+export function createApp({ db, config, configFile = null, appInstalled = null, updater = null, queue = null, log = console.log, idle = null }) {
 	let lastScan = null;
 	const presence = createPresence(idle);
 
@@ -105,6 +106,11 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		}],
 		['GET', /^\/api\/settings$/, () => settingsBody()],
 		['PUT', /^\/api\/settings$/, (_, body) => saveSettings(body)],
+		['POST', /^\/api\/update\/check$/, async () => {
+			if (!updater) return null;
+			await updater.check();
+			return settingsBody();
+		}],
 	];
 
 	const hasAccount = uuid => Boolean(db.raw.prepare('SELECT 1 FROM accounts WHERE uuid = ?').get(uuid));
@@ -131,6 +137,8 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			// Turning summaries on needs a restart, because the queue is made at start.
 			summaryRunning: Boolean(queue),
 			appInstalled: appInstalled ? appInstalled() : null,
+			version: VERSION,
+			update: updater ? { ...updater.status(), auto: config.updates.auto } : null,
 			...extra,
 		};
 	}
@@ -147,6 +155,7 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		Object.assign(config, fresh);
 		if (changed.folders) regroup(db, config);
 		if (changed.folders || changed.accounts) runScan();
+		if (changed.updatesOn) updater?.check();
 		return settingsBody({ saved: true, regrouped: changed.folders });
 	}
 
@@ -262,9 +271,9 @@ function logDirs(config) {
 	].filter(Boolean);
 }
 
-export function startServer({ db, config, configFile = null, appInstalled = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
+export function startServer({ db, config, configFile = null, appInstalled = null, updater = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
 	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
-	const app = createApp({ db, config, configFile, appInstalled, queue, log, idle });
+	const app = createApp({ db, config, configFile, appInstalled, updater, queue, log, idle });
 	const server = http.createServer(app.handle);
 	return new Promise((resolve, reject) => {
 		server.once('error', reject);
