@@ -37,7 +37,8 @@ It works from the local logs of several tools and several accounts together, so 
 - Localhost only. No accounts, no login.
 - Interface language: Thai only for now. English may come later, so text should not be baked into images.
 - Settings page edits project folders, exclusions, account names, AI summaries and overlap warnings in the app.
-- Planned, not built yet: in-app first-run setup, a downloadable installer.
+- A Windows installer (Setup.exe with its own Node) is built by GitHub Actions for each release.
+- Planned, not built yet: in-app first-run setup.
 
 ## Brand Commitments
 

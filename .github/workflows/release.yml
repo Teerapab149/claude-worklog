@@ -1,0 +1,45 @@
+name: Release
+
+# Pushing a tag such as v0.2.0 builds Worklog-Setup-0.2.0.exe and attaches it
+# to a GitHub release of the same name. The tag must match package.json.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.14.0'
+
+      - name: Check the tag matches package.json
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ("v$version" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} does not match package.json version $version" }
+
+      - name: Test
+        run: npm test
+
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Build the installer
+        run: node tools/build-installer.js
+
+      - name: Attach it to the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $file = Get-ChildItem dist/Worklog-Setup-*.exe | Select-Object -First 1
+          gh release view "${{ github.ref_name }}" *> $null
+          if ($LASTEXITCODE -eq 0) { gh release upload "${{ github.ref_name }}" $file.FullName --clobber }
+          else { gh release create "${{ github.ref_name }}" $file.FullName --title "Worklog ${{ github.ref_name }}" --generate-notes }

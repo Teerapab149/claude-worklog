@@ -5,6 +5,17 @@ import { fileURLToPath } from 'node:url';
 
 export const APP_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * Where config.local.json and the data folder live. A copy put in place by
+ * the installer carries a file named "installed" and keeps them in the
+ * person's own app data folder, so an update or an uninstall leaves them
+ * alone. A copy run from source keeps them next to the code.
+ */
+export const WORK_HOME = process.env.WORKLOG_HOME
+	|| (fs.existsSync(path.join(APP_ROOT, 'installed'))
+		? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.local', 'share'), 'Worklog')
+		: APP_ROOT);
+
 const DEFAULTS = {
 	// Where Claude Code keeps its state. null means CLAUDE_CONFIG_DIR, then ~/.claude.
 	claudeDir: null,
@@ -47,7 +58,7 @@ const DEFAULTS = {
 	},
 };
 
-export const configFile = () => process.env.WORKLOG_CONFIG || path.join(APP_ROOT, 'config.local.json');
+export const configFile = () => process.env.WORKLOG_CONFIG || path.join(WORK_HOME, 'config.local.json');
 
 /** What the person set in the file, without the defaults filled in. */
 export function readLocalConfig(file = configFile()) {
@@ -56,6 +67,7 @@ export function readLocalConfig(file = configFile()) {
 
 /** Writes the file through a temporary one, so a crash never leaves it half written. */
 export function writeLocalConfig(local, file = configFile()) {
+	fs.mkdirSync(path.dirname(file), { recursive: true });
 	const tmp = `${file}.tmp`;
 	fs.writeFileSync(tmp, JSON.stringify(local, null, 2) + '\n');
 	fs.renameSync(tmp, file);
@@ -77,6 +89,6 @@ export function resolveConfig(overrides = {}) {
 	config.claudeDir = config.claudeDir || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 	config.codexDir = config.codexDir || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
 	config.sources = { ...DEFAULTS.sources, ...overrides.sources };
-	config.dataDir = path.resolve(APP_ROOT, config.dataDir);
+	config.dataDir = path.resolve(WORK_HOME, config.dataDir);
 	return config;
 }

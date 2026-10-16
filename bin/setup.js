@@ -6,12 +6,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline/promises';
-import { APP_ROOT, resolveConfig } from '../src/config.js';
+import { configFile, resolveConfig, writeLocalConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { scan } from '../src/indexer.js';
 import { parseFolders, suggestRoots } from '../src/setup.js';
 
-const file = process.env.WORKLOG_CONFIG || path.join(APP_ROOT, 'config.local.json');
+const file = configFile();
 const local = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
 const config = resolveConfig(local);
 const ask = process.stdin.isTTY ? readline.createInterface({ input: process.stdin, output: process.stdout }) : null;
@@ -53,7 +53,7 @@ ask?.close();
 db.close();
 
 const out = { ...local, roots, accounts };
-fs.writeFileSync(file, JSON.stringify(out, null, 2) + '\n');
+writeLocalConfig(out, file);
 console.log(`\nบันทึกแล้วที่ ${file}`);
 
 const index = path.join(config.dataDir, 'index.db');

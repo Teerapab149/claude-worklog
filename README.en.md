@@ -23,6 +23,16 @@ Everything runs on your machine. There is no outside server and nothing to sign 
 
 ## Install
 
+### Windows, without a terminal
+
+1. Download `Worklog-Setup-<version>.exe` from the latest [release](https://github.com/Teerapab149/claude-worklog/releases).
+2. Double-click it. If Windows shows "Windows protected your PC", press More info and then Run anyway (the file is not signed yet).
+3. Choose whether to add a desktop icon and whether to install the Claude Code hooks, then press Install.
+
+The installer brings its own Node, so nothing else needs installing, and it needs no administrator rights. It reads your logs to find your project folders and accounts; change them later on the settings page. Settings and data live in `%LOCALAPPDATA%Worklog` and stay there through updates and uninstall; delete that folder if you no longer want them. Uninstall from Apps in Windows Settings.
+
+### From source
+
 ```bash
 git clone https://github.com/Teerapab149/claude-worklog.git
 cd claude-worklog
@@ -93,7 +103,7 @@ All settings live in `config.local.json`; anything the page does not show can be
 | `port` | Port for the page. Default 4317. |
 | `app.browser` | Path to the browser used for the app window. Without it Edge is tried first, then Chrome. |
 
-If you change `roots` later, run `npm run scan -- --full` to regroup projects (existing AI summaries will be redone).
+If you change `roots` in the file later, run `npm run scan -- --full` to regroup projects (existing AI summaries will be redone). Changing them on the settings page regroups on its own and keeps the summaries.
 
 ## Limitations
 
@@ -109,6 +119,8 @@ npm test
 ```
 
 Each tool's log reader lives in `src/sources/`. A new tool needs a reader that returns the same shape as the existing ones.
+
+`node tools/build-installer.js` builds the installer and needs [Inno Setup 6](https://jrsoftware.org/isinfo.php); without it, it stops after preparing `dist/stage`. To release, set `version` in `package.json` and push a matching tag such as `v0.2.0`; GitHub Actions builds `Worklog-Setup-0.2.0.exe` and attaches it to the release.
 
 ## License
 

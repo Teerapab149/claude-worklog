@@ -4,3 +4,4 @@ config.local.json
 PLAN.md
 .impeccable/review/
 .impeccable/questions/
+dist/

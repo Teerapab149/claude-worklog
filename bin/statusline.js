@@ -6,7 +6,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { APP_ROOT, loadConfig } from '../src/config.js';
+import { WORK_HOME, loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { record, render } from '../src/statusline.js';
 
@@ -22,7 +22,7 @@ try {
 }
 catch (error) {
 	try {
-		const dir = config?.dataDir ?? path.join(APP_ROOT, 'data');
+		const dir = config?.dataDir ?? path.join(WORK_HOME, 'data');
 		fs.mkdirSync(dir, { recursive: true });
 		fs.appendFileSync(path.join(dir, 'hook.log'), `${new Date().toISOString()} statusline ${error.stack}\n`);
 	}
