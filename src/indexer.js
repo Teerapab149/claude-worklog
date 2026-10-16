@@ -99,6 +99,31 @@ export function scanFile(db, config, adapter, ctx, file, stats) {
 	});
 }
 
+/**
+ * Puts every session under its project again after the project folders,
+ * exclusions or names changed, without reading the logs again. Sessions now
+ * excluded are dropped and their files skipped; files skipped before are
+ * read again by the next scan, which leaves out whatever still matches.
+ */
+export function regroup(db, config) {
+	db.transaction(() => {
+		db.raw.exec('DELETE FROM scan_state WHERE excluded = 1');
+		db.raw.exec('DELETE FROM projects');
+		const setKey = db.raw.prepare('UPDATE sessions SET project_key = ? WHERE id = ?');
+		const exclude = db.raw.prepare('UPDATE scan_state SET excluded = 1, offset = size WHERE session_id = ?');
+		for (const s of db.allSessions()) {
+			const project = resolveProject(s.cwd, config);
+			if (project?.excluded) {
+				db.deleteSessionData(s.id);
+				exclude.run(s.id);
+				continue;
+			}
+			if (project) db.saveProject(project);
+			setKey.run(project?.key ?? null, s.id);
+		}
+	});
+}
+
 export function scan(db, config) {
 	const stats = { files: 0, read: 0, unchanged: 0, excluded: 0, badLines: 0, inferred: 0, byTool: {} };
 	for (const adapter of enabledAdapters(config)) {

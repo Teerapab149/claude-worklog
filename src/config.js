@@ -47,7 +47,21 @@ const DEFAULTS = {
 	},
 };
 
-export function loadConfig(file = process.env.WORKLOG_CONFIG || path.join(APP_ROOT, 'config.local.json')) {
+export const configFile = () => process.env.WORKLOG_CONFIG || path.join(APP_ROOT, 'config.local.json');
+
+/** What the person set in the file, without the defaults filled in. */
+export function readLocalConfig(file = configFile()) {
+	return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+}
+
+/** Writes the file through a temporary one, so a crash never leaves it half written. */
+export function writeLocalConfig(local, file = configFile()) {
+	const tmp = `${file}.tmp`;
+	fs.writeFileSync(tmp, JSON.stringify(local, null, 2) + '\n');
+	fs.renameSync(tmp, file);
+}
+
+export function loadConfig(file = configFile()) {
 	let local = {};
 	if (fs.existsSync(file)) local = JSON.parse(fs.readFileSync(file, 'utf8'));
 	return resolveConfig(local);

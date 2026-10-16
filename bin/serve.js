@@ -4,7 +4,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
-import { loadConfig } from '../src/config.js';
+import { configFile, loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { startServer } from '../src/server.js';
 
@@ -23,7 +23,7 @@ if (process.argv.includes('--log')) {
 
 const db = openDb(path.join(config.dataDir, 'index.db'));
 try {
-	const server = await startServer({ db, config, port, log });
+	const server = await startServer({ db, config, configFile: configFile(), port, log });
 	log(`เปิดหน้าเว็บได้ที่ http://localhost:${server.address().port}`);
 }
 catch (error) {

@@ -484,27 +484,122 @@ async function renderAccounts() {
 
 // Settings
 
+const OVERLAP_MODE = {
+	deny_once: 'หยุดการแก้ครั้งแรกแล้วบอก Claude ว่าไฟล์นี้มีอีก session แก้อยู่ ถ้า Claude ลองอีกครั้งจะแก้ได้ (แนะนำ)',
+	ask: 'ถามคุณก่อนทุกครั้ง',
+	context: 'ให้แก้ได้เลย แล้วบอก Claude หลังจากนั้น',
+	off: 'ไม่เตือน',
+};
+const SUMMARY_MODEL = { haiku: 'Haiku ใช้โควต้าน้อยกว่า', sonnet: 'Sonnet สรุปละเอียดกว่า แต่ใช้โควต้ามากกว่า' };
+const lines = text => text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+
+function field(id, label, control, help = '') {
+	return `<div class="field"><label class="field-label" for="${id}">${label}</label>${control}${help ? `<p class="field-help">${help}</p>` : ''}</div>`;
+}
+
 async function renderSettings() {
-	const { scan, settings: st } = await api('/api/settings');
+	const { scan, settings: st, editable: ed, canSave, summaryRunning } = await api('/api/settings');
 	showScan(scan);
 	const fact = (k, v) => `<div class="fact"><dt>${k}</dt><dd>${v}</dd></div>`;
 	const on = (yes, a, b) => `<span class="pill ${yes ? 'on' : 'off'}">${yes ? a : b}</span>`;
+	const suggest = ed.suggestedRoots.length && ed.suggestedRoots.join('\n') !== ed.roots.join('\n')
+		? `<button class="btn-copy" type="button" data-fill-roots="${esc(ed.suggestedRoots.join('\n'))}">ใช้โฟลเดอร์ที่ Worklog หาเจอ</button>` : '';
+	const radio = (name, value, text, checked) =>
+		`<label class="choice"><input type="radio" name="${name}" value="${value}" ${checked ? 'checked' : ''}><span>${esc(text)}</span></label>`;
+
 	app.innerHTML = `<div class="page">
-		<header class="page-head"><h1>ตั้งค่า</h1><p>สิ่งที่ตั้งไว้ตอนนี้ หน้าที่แก้ค่าได้ในแอปกำลังจะตามมา ระหว่างนี้แก้ได้ที่ไฟล์ config.local.json</p></header>
-		${box('โปรเจคและบัญชี', `<dl class="facts">
-			${fact('โฟลเดอร์ที่เก็บโปรเจค', st.roots.length ? st.roots.map(r => `<span class="mono">${esc(r)}</span>`).join('<br>') : 'ยังไม่ได้ตั้ง แต่ละ session จะจัดกลุ่มตามโฟลเดอร์ของตัวเอง')}
-			${fact('โฟลเดอร์ที่ไม่นับ', st.exclude.length ? st.exclude.map(r => `<span class="mono">${esc(r)}</span>`).join('<br>') : 'ไม่มี')}
-			${fact('บัญชี', st.accounts.map(a => `${esc(a.label)} <span class="guess">(${a.sessions} session)</span>`).join('<br>') || 'ยังไม่พบ')}
-		</dl>`)}
-		${box('การทำงาน', `<dl class="facts">
-			${fact('สรุปด้วย AI', `${on(st.summary.enabled, 'เปิดอยู่', 'ปิดอยู่')} ใช้โมเดล ${esc(st.summary.model)} สรุปเองเฉพาะงานใน ${st.summary.autoDays} วันล่าสุด`)}
-			${fact('hook เตือนงานทับซ้อน', `${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')} นับว่าทับกันเมื่อแก้ไฟล์เดียวกันห่างกันไม่เกิน ${st.overlap.windowMinutes} นาที`)}
+		<header class="page-head"><h1>ตั้งค่า</h1><p>${canSave
+			? 'แก้แล้วกดบันทึกที่ท้ายหน้า ค่าทั้งหมดเก็บไว้ในไฟล์ config.local.json ในเครื่องนี้'
+			: 'Worklog ที่เปิดอยู่นี้แก้ค่าไม่ได้ ให้เปิดจาก shortcut ของ Worklog แทน'}</p></header>
+		<form class="settings" id="settings" novalidate>
+		${box('โปรเจค', `<div class="fields">
+			${field('roots', 'โฟลเดอร์ที่เก็บโปรเจค', `<textarea class="input mono-input" id="roots" name="roots" rows="3" spellcheck="false">${esc(ed.roots.join('\n'))}</textarea>${suggest}`,
+				'ใส่บรรทัดละหนึ่งโฟลเดอร์ โฟลเดอร์ย่อยข้างในแต่ละอันนับเป็นหนึ่งโปรเจค ถ้าเว้นว่าง แต่ละ session จะจัดกลุ่มตามโฟลเดอร์ที่ทำงาน')}
+			${field('exclude', 'โฟลเดอร์ที่ไม่นับ', `<textarea class="input mono-input" id="exclude" name="exclude" rows="2" spellcheck="false">${esc(ed.exclude.join('\n'))}</textarea>`,
+				'session ที่ทำงานในโฟลเดอร์เหล่านี้จะไม่แสดงใน Worklog')}
+		</div>`)}
+		${box('ชื่อบัญชี', ed.accounts.length ? `<div class="fields">${ed.accounts.map(a => field(`acct-${esc(a.uuid)}`,
+			`รหัส ${esc(a.uuid.slice(0, 8))} <span class="guess">(${a.sessions} session)</span>`,
+			`<input class="input" id="acct-${esc(a.uuid)}" data-account="${esc(a.uuid)}" maxlength="40" value="${esc(a.label)}">`)).join('')}</div>`
+			: '<p class="empty">ยังไม่พบบัญชี Claude ใน log</p>')}
+		${box('สรุปด้วย AI', `<div class="fields">
+			<label class="switch"><input type="checkbox" name="summaryEnabled" ${ed.summary.enabled ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>สรุปงานด้วย AI</span></label>
+			<p class="field-help">ใช้โควต้าของบัญชี Claude ที่ claude CLI login อยู่ ${summaryRunning || !ed.summary.enabled ? '' : 'ถ้าเพิ่งเปิด การสรุปจะเริ่มเมื่อปิดหน้าต่าง Worklog แล้วเปิดใหม่'}</p>
+			<fieldset class="choices"><legend class="field-label">โมเดล</legend>
+				${Object.entries(SUMMARY_MODEL).map(([v, t]) => radio('model', v, t, ed.summary.model === v)).join('')}</fieldset>
+			${field('autoDays', 'สรุปเองเฉพาะงานที่มีข้อความใหม่ในกี่วันล่าสุด', `<span class="unit"><input class="input input-num" id="autoDays" name="autoDays" type="number" min="1" max="60" step="1" value="${ed.summary.autoDays}"> วัน</span>`,
+				'งานที่เก่ากว่านี้จะสรุปเมื่อคุณกดปุ่มสรุปในหน้าโปรเจคเท่านั้น')}
+		</div>`)}
+		${box('งานทับซ้อน', `<div class="fields">
+			${field('windowMinutes', 'นับว่าทับกันเมื่อสอง session แก้ไฟล์เดียวกันห่างกันไม่เกิน', `<span class="unit"><input class="input input-num" id="windowMinutes" name="windowMinutes" type="number" min="5" max="240" step="1" value="${ed.overlap.windowMinutes}"> นาที</span>`)}
+			<fieldset class="choices"><legend class="field-label">เมื่อ Claude กำลังจะแก้ไฟล์ที่อีก session เพิ่งแก้</legend>
+				${Object.entries(OVERLAP_MODE).map(([v, t]) => radio('preToolUse', v, t, ed.overlap.preToolUse === v)).join('')}</fieldset>
+			<p class="field-help">hook ของ Worklog ${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')}</p>
+		</div>`)}
+		<div class="save-bar">
+			<button class="btn-save" type="submit" ${canSave ? '' : 'disabled'}>บันทึก</button>
+			<p class="save-status" id="save-status" role="status"></p>
+		</div>
+		</form>
+		${box('ที่อยู่ข้อมูล', `<dl class="facts">
 			${fact('ข้อมูลของ Claude Code', `<span class="mono">${esc(st.sources.claude)}</span>`)}
 			${fact('ข้อมูลของ Codex', `<span class="mono">${esc(st.sources.codex)}</span>`)}
 			${fact('ที่เก็บข้อมูลของ Worklog', `<span class="mono">${esc(st.dataDir)}</span>`)}
 		</dl>`)}
 	</div>`;
 }
+
+app.addEventListener('submit', async event => {
+	const form = event.target.closest('#settings');
+	if (!form) return;
+	event.preventDefault();
+	const status = form.querySelector('#save-status');
+	const save = form.querySelector('.btn-save');
+	const el = form.elements;
+	const body = {
+		roots: lines(el.roots.value),
+		exclude: lines(el.exclude.value),
+		accounts: Object.fromEntries([...form.querySelectorAll('[data-account]')].map(i => [i.dataset.account, i.value])),
+		summary: { enabled: el.summaryEnabled.checked, model: el.model.value, autoDays: Number(el.autoDays.value) },
+		overlap: { windowMinutes: Number(el.windowMinutes.value), preToolUse: el.preToolUse.value },
+	};
+	status.className = 'save-status';
+	status.textContent = 'กำลังบันทึก';
+	save.disabled = true;
+	let res;
+	try {
+		res = await fetch('/api/settings', { method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+		const data = await res.json();
+		if (!res.ok) {
+			status.className = 'save-status is-error';
+			status.textContent = data.field ? data.error : 'บันทึกไม่สำเร็จ';
+			const target = { roots: el.roots, exclude: el.exclude, autoDays: el.autoDays, windowMinutes: el.windowMinutes }[data.field];
+			target?.focus();
+			return;
+		}
+		await route({ quiet: true });
+		const after = document.getElementById('save-status');
+		if (after) {
+			after.className = 'save-status is-ok';
+			after.textContent = data.regrouped ? 'บันทึกแล้ว และจัดกลุ่มโปรเจคใหม่แล้ว' : 'บันทึกแล้ว';
+		}
+	}
+	catch {
+		status.className = 'save-status is-error';
+		status.textContent = 'บันทึกไม่สำเร็จ';
+	}
+	finally {
+		save.disabled = false;
+	}
+});
+
+app.addEventListener('click', event => {
+	const fill = event.target.closest('[data-fill-roots]');
+	if (!fill) return;
+	const roots = document.getElementById('roots');
+	roots.value = fill.dataset.fillRoots;
+	roots.focus();
+});
 
 // Project and session detail
 

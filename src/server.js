@@ -3,10 +3,11 @@
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import { APP_ROOT } from './config.js';
-import { scan } from './indexer.js';
+import { APP_ROOT, readLocalConfig, resolveConfig, writeLocalConfig } from './config.js';
+import { regroup, scan } from './indexer.js';
 import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
+import * as settings from './settings.js';
 import { createSummaryQueue } from './summaries.js';
 import { watchLogs } from './watch.js';
 
@@ -50,7 +51,8 @@ function createPresence(idle) {
 	};
 }
 
-export function createApp({ db, config, queue = null, log = console.log, idle = null }) {
+// configFile is where the settings page saves; without one the page is read only.
+export function createApp({ db, config, configFile = null, queue = null, log = console.log, idle = null }) {
 	let lastScan = null;
 	const presence = createPresence(idle);
 
@@ -98,7 +100,8 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 			db.clearLimits(uuid);
 			return { accounts: queries.accounts(db, config) };
 		}],
-		['GET', /^\/api\/settings$/, () => ({ scan: lastScan, settings: queries.settings(db, config) })],
+		['GET', /^\/api\/settings$/, () => settingsBody()],
+		['PUT', /^\/api\/settings$/, (_, body) => saveSettings(body)],
 	];
 
 	const hasAccount = uuid => Boolean(db.raw.prepare('SELECT 1 FROM accounts WHERE uuid = ?').get(uuid));
@@ -116,8 +119,35 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 		return { accounts: queries.accounts(db, config) };
 	}
 
+	function settingsBody(extra = {}) {
+		return {
+			scan: lastScan,
+			settings: queries.settings(db, config),
+			editable: settings.editable(db, config),
+			canSave: Boolean(configFile),
+			// Turning summaries on needs a restart, because the queue is made at start.
+			summaryRunning: Boolean(queue),
+			...extra,
+		};
+	}
+
+	function saveSettings(body) {
+		if (!configFile) throw httpError(409, 'read_only');
+		const local = readLocalConfig(configFile);
+		const known = new Set(db.raw.prepare("SELECT uuid FROM accounts WHERE tool = 'claude'").all().map(a => a.uuid));
+		const { next, changed } = settings.merge(local, body ?? {}, known);
+		writeLocalConfig(next, configFile);
+		// Every part of the server holds this one object, so change it in place.
+		const fresh = resolveConfig(next);
+		for (const key of Object.keys(config)) if (!(key in fresh)) delete config[key];
+		Object.assign(config, fresh);
+		if (changed.folders) regroup(db, config);
+		if (changed.folders || changed.accounts) runScan();
+		return settingsBody({ saved: true, regrouped: changed.folders });
+	}
+
 	function summarize(kind, ref) {
-		if (!queue) return { queued: false, reason: 'disabled' };
+		if (!queue || !config.summary.enabled) return { queued: false, reason: 'disabled' };
 		const exists = kind === 'session'
 			? db.getSession(ref)
 			: db.raw.prepare('SELECT 1 FROM projects WHERE key = ?').get(ref);
@@ -208,7 +238,7 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 				return body ? sendJson(res, 200, body) : sendJson(res, 404, { error: 'not_found' });
 			}
 			catch (error) {
-				if (error.status) return sendJson(res, error.status, { error: error.message });
+				if (error.status) return sendJson(res, error.status, { error: error.message, field: error.field });
 				log(`${req.method} ${url.pathname} failed: ${error.stack}`);
 				return sendJson(res, 500, { error: 'internal' });
 			}
@@ -228,9 +258,9 @@ function logDirs(config) {
 	].filter(Boolean);
 }
 
-export function startServer({ db, config, port = 4317, watch = {}, log = console.log, run, idle = null }) {
+export function startServer({ db, config, configFile = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
 	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
-	const app = createApp({ db, config, queue, log, idle });
+	const app = createApp({ db, config, configFile, queue, log, idle });
 	const server = http.createServer(app.handle);
 	return new Promise((resolve, reject) => {
 		server.once('error', reject);

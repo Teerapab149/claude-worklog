@@ -12,7 +12,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { appBrowser, windowArgs } from '../src/app-window.js';
-import { loadConfig } from '../src/config.js';
+import { configFile, loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { startServer } from '../src/server.js';
 
@@ -58,7 +58,7 @@ function shutdown() {
 }
 
 try {
-	server = await startServer({ db, config, port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
+	server = await startServer({ db, config, configFile: configFile(), port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
 	log(`เปิดแอปที่ ${url}`);
 }
 catch (error) {

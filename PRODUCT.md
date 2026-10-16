@@ -36,7 +36,8 @@ It works from the local logs of several tools and several accounts together, so 
 - Plain HTML, CSS and JavaScript served by a small Node server; no framework and no external packages. Must stay light on memory and CPU.
 - Localhost only. No accounts, no login.
 - Interface language: Thai only for now. English may come later, so text should not be baked into images.
-- Planned, not built yet: in-app first-run setup and settings page, a downloadable installer.
+- Settings page edits project folders, exclusions, account names, AI summaries and overlap warnings in the app.
+- Planned, not built yet: in-app first-run setup, a downloadable installer.
 
 ## Brand Commitments
 
