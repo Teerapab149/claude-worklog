@@ -60,3 +60,21 @@ test('API serves overview, project and session, and refuses other hosts', async 
 	const page = await fetch(`${base}/`);
 	assert.match(await page.text(), /Worklog/);
 });
+
+test('in app mode the server reports idle once the last page closes', async t => {
+	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-idle-'));
+	const config = resolveConfig({ claudeDir, codexDir: path.join(claudeDir, 'codex'), summary: { enabled: false } });
+	const db = openDb(':memory:');
+	let idle = 0;
+	const server = await startServer({ db, config, port: 0, log: () => {}, idle: { graceMs: 150, firstMs: 5000, onIdle: () => idle++ } });
+	t.after(() => { server.closeAllConnections(); server.close(); db.close(); fs.rmSync(claudeDir, { recursive: true, force: true }); });
+	const port = server.address().port;
+
+	const page = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: '/api/alive', headers: { host: 'localhost' } }, resolve));
+	assert.equal(page.headers['content-type'], 'text/event-stream');
+	await new Promise(r => setTimeout(r, 300));
+	assert.equal(idle, 0);
+	page.destroy();
+	await new Promise(r => setTimeout(r, 400));
+	assert.equal(idle, 1);
+});

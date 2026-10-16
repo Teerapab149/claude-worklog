@@ -27,18 +27,20 @@ Everything runs on your machine. There is no outside server and nothing to sign 
 git clone https://github.com/Teerapab149/claude-worklog.git
 cd claude-worklog
 npm run setup
-npm start
+npm run shortcut:install
 ```
 
-`npm run setup` reads your logs, finds the folders that hold your projects and the Claude accounts you have used, and asks what to call each account. The answers go into `config.local.json`, which git ignores. `npm start` then serves the page at http://localhost:4317.
+`npm run setup` reads your logs, finds the folders that hold your projects and the Claude accounts you have used, and asks what to call each account. The answers go into `config.local.json`, which git ignores.
 
-To start it at every login:
+`npm run shortcut:install` puts a Worklog icon on the Desktop and in the Start menu (Windows only for now). Double click it and Worklog opens in a window of its own through Edge or Chrome, with no tabs or address bar. Clicking it again while it is open brings the same window forward. About 10 seconds after you close the window everything stops, and nothing is left running. Remove the icons with `npm run shortcut:uninstall`. Elsewhere, `npm run app` opens the same window, or run `npm start` and visit http://localhost:4317 in any browser.
+
+To keep the server running all the time instead, for example so AI summaries carry on in the background:
 
 ```bash
 npm run autostart:install
 ```
 
-On Windows this puts a launcher in the Startup folder and adds Worklog to the Start menu. On macOS it uses launchd and on Linux a systemd user service. Undo it with `npm run autostart:uninstall`.
+On Windows this puts a launcher in the Startup folder. On macOS it uses launchd and on Linux a systemd user service. Undo it with `npm run autostart:uninstall`. While that server runs, the icon only opens a window, and closing the window leaves the server running.
 
 ## Claude Code hooks
 
@@ -62,7 +64,9 @@ Each hook takes about 200 ms. If one fails it writes to `data/hook.log` and neve
 
 ## Resource use
 
-The server takes about 80 MB of memory. It reads the logs only when a log file changes (at most once every 30 seconds) and picks up where it left off, so a scan takes about 0.1 seconds. An idle machine sees almost no CPU use.
+While the app is open the server takes about 70 MB of memory and the app window about 170 MB (GPU and unneeded browser features are turned off). Once the window is closed it uses nothing. While open, the server reads the logs only when a log file changes (at most once every 30 seconds) and picks up where it left off, so a scan takes about 0.1 seconds.
+
+The Claude Code hooks keep working while the app is closed, since they read the database themselves. AI summaries only run while the app is open.
 
 ## Configuration
 
@@ -81,6 +85,7 @@ Settings live in `config.local.json`. See [config.example.json](config.example.j
 | `summary.autoDays` | Sessions with new messages in this many days are summarized on their own. Older ones when you ask from the page. |
 | `claudeDir`, `codexDir` | Where each tool keeps its data. Defaults to `~/.claude` and `~/.codex`. |
 | `port` | Port for the page. Default 4317. |
+| `app.browser` | Path to the browser used for the app window. Without it Edge is tried first, then Chrome. |
 
 If you change `roots` later, run `npm run scan -- --full` to regroup projects (existing AI summaries will be redone).
 

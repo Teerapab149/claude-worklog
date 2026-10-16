@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+// npm run app   opens Worklog in its own window, like a desktop app.
+//
+// The server runs inside this process and the window is Edge (or Chrome) in
+// app mode with a profile of its own. The page keeps a connection open to the
+// server, so once the last window has been closed for a few seconds the
+// server stops, the browser processes of that profile are ended, and nothing
+// is left running. When a server is already running (npm start, or start at
+// login) only the window is opened and that server is left alone.
+
+import { spawn, spawnSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { appBrowser, windowArgs } from '../src/app-window.js';
+import { loadConfig } from '../src/config.js';
+import { openDb } from '../src/db.js';
+import { startServer } from '../src/server.js';
+
+const config = loadConfig();
+const port = Number(process.env.PORT) || config.port || 4317;
+const url = `http://localhost:${port}/`;
+const profile = path.join(config.dataDir, 'app-window');
+fs.mkdirSync(config.dataDir, { recursive: true });
+const logFile = path.join(config.dataDir, 'server.log');
+if (fs.existsSync(logFile) && fs.statSync(logFile).size > 1024 * 1024) fs.renameSync(logFile, `${logFile}.old`);
+const log = (...parts) => fs.appendFileSync(logFile, `${new Date().toISOString()} ${parts.join(' ')}\n`);
+process.on('uncaughtException', error => { log(`app crashed: ${error.stack}`); process.exit(1); });
+
+function openWindow() {
+	const browser = appBrowser(config);
+	if (browser) {
+		spawn(browser, windowArgs(url, profile), { detached: true, stdio: 'ignore' }).unref();
+		return;
+	}
+	log('ไม่พบ Edge หรือ Chrome จึงเปิดในเบราว์เซอร์หลักแทน');
+	spawn('cmd', ['/c', 'start', '', url], { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+}
+
+/** Ends the browser processes that use Worklog's own profile, which can linger in the background. */
+function closeBrowser() {
+	if (process.platform !== 'win32') return;
+	const dir = profile.replace(/'/g, "''");
+	spawnSync('powershell', ['-NoProfile', '-Command',
+		`Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" | `
+		+ `Where-Object { $_.CommandLine -and $_.CommandLine.Contains('${dir}') } | `
+		+ 'ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }'], { windowsHide: true });
+}
+
+const db = openDb(path.join(config.dataDir, 'index.db'));
+let server;
+function shutdown() {
+	log('ปิดหน้าต่างแอปแล้ว ปิดเซิร์ฟเวอร์ตาม');
+	closeBrowser();
+	server.closeAllConnections();
+	server.close();
+	db.close();
+	process.exit(0);
+}
+
+try {
+	server = await startServer({ db, config, port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
+	log(`เปิดแอปที่ ${url}`);
+}
+catch (error) {
+	if (error.code !== 'EADDRINUSE') throw error;
+	// Someone else runs the server, so it is theirs to stop.
+	db.close();
+	openWindow();
+	process.exit(0);
+}
+openWindow();

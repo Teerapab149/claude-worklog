@@ -19,8 +19,37 @@ const TYPES = {
 };
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
-export function createApp({ db, config, queue = null, log = console.log }) {
+/**
+ * Keeps count of open pages. Each page holds one event stream open for as
+ * long as it is showing, so the count drops to zero when the last window
+ * closes. idle.onIdle runs once nobody has been connected for idle.graceMs
+ * (long enough to ride out a reload), or when no page ever connects within
+ * idle.firstMs.
+ */
+function createPresence(idle) {
+	let open = 0;
+	let timer = idle ? setTimeout(() => idle.onIdle(), idle.firstMs ?? 60000) : null;
+	return {
+		join(req, res) {
+			res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
+			res.write(': open\n\n');
+			// Something must cross the stream now and then, or it may be dropped as dead.
+			const ping = setInterval(() => res.write(': ping\n\n'), 25000);
+			open++;
+			clearTimeout(timer);
+			req.on('close', () => {
+				clearInterval(ping);
+				open--;
+				if (idle && open === 0) timer = setTimeout(() => idle.onIdle(), idle.graceMs ?? 10000);
+			});
+		},
+		stop: () => clearTimeout(timer),
+	};
+}
+
+export function createApp({ db, config, queue = null, log = console.log, idle = null }) {
 	let lastScan = null;
+	const presence = createPresence(idle);
 
 	function runScan() {
 		const started = Date.now();
@@ -109,6 +138,7 @@ export function createApp({ db, config, queue = null, log = console.log }) {
 			return res.end();
 		}
 		const url = new URL(req.url, 'http://localhost');
+		if (url.pathname === '/api/alive' && req.method === 'GET') return presence.join(req, res);
 		if (!url.pathname.startsWith('/api/')) {
 			if (req.method !== 'GET' && req.method !== 'HEAD') return sendJson(res, 405, { error: 'method_not_allowed' });
 			return serveStatic(res, url.pathname);
@@ -129,7 +159,7 @@ export function createApp({ db, config, queue = null, log = console.log }) {
 		sendJson(res, 404, { error: 'not_found' });
 	}
 
-	return { handle, runScan };
+	return { handle, runScan, presence };
 }
 
 /** Folders whose .jsonl files are the session logs of each tool that is read. */
@@ -140,9 +170,9 @@ function logDirs(config) {
 	].filter(Boolean);
 }
 
-export function startServer({ db, config, port = 4317, watch = {}, log = console.log, run }) {
+export function startServer({ db, config, port = 4317, watch = {}, log = console.log, run, idle = null }) {
 	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
-	const app = createApp({ db, config, queue, log });
+	const app = createApp({ db, config, queue, log, idle });
 	const server = http.createServer(app.handle);
 	return new Promise((resolve, reject) => {
 		server.once('error', reject);
@@ -152,7 +182,7 @@ export function startServer({ db, config, port = 4317, watch = {}, log = console
 			// that cannot listen exits without touching the database.
 			app.runScan();
 			const watcher = watchLogs(logDirs(config), app.runScan, { log, ...watch });
-			server.on('close', () => watcher.close());
+			server.on('close', () => { watcher.close(); app.presence.stop(); });
 			resolve(server);
 		});
 	});

@@ -25,6 +25,28 @@ export function windowsLauncher(command = serveCommand()) {
 	].join('\r\n');
 }
 
+/** The command behind the Worklog shortcut, which opens the app window. */
+export function appCommand(node = process.execPath) {
+	return [node, '--disable-warning=ExperimentalWarning', path.join(APP_ROOT, 'bin', 'app.js')];
+}
+
+/**
+ * What the Worklog shortcut runs. A window already open is brought to the
+ * front instead of opening a second one; its title starts with "Worklog |".
+ */
+export function appLauncher(command = appCommand()) {
+	const line = command.map(part => (part.startsWith('--') ? part : `"${part}"`)).join(' ');
+	return [
+		"' Opens Worklog in its own window. Made by npm run shortcut:install.",
+		'Set shell = CreateObject("WScript.Shell")',
+		'If Not shell.AppActivate("Worklog |") Then',
+		`	shell.CurrentDirectory = "${vbs(APP_ROOT)}"`,
+		`	shell.Run "${vbs(line)}", 0, False`,
+		'End If',
+		'',
+	].join('\r\n');
+}
+
 const xml = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 /** A launchd agent for macOS, kept in ~/Library/LaunchAgents. */

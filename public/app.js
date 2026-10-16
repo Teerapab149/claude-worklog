@@ -531,3 +531,7 @@ rescanBtn.addEventListener('click', async () => {
 
 window.addEventListener('hashchange', route);
 route();
+
+// Tells the server this page is open. When Worklog runs as an app it stops
+// once no page has been open for a few seconds. EventSource reconnects on its own.
+if ('EventSource' in window) new EventSource('/api/alive');
