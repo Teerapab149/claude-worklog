@@ -31,18 +31,17 @@ export function appCommand(node = process.execPath) {
 }
 
 /**
- * What the Worklog shortcut runs. A window already open is brought to the
- * front instead of opening a second one; its title starts with "Worklog |".
+ * What the Worklog shortcut runs. It always starts bin/app.js, which brings
+ * an open Worklog window forward when there is one, found by its process
+ * rather than its title (a stale window or a browser tab shares the title).
  */
 export function appLauncher(command = appCommand()) {
 	const line = command.map(part => (part.startsWith('--') ? part : `"${part}"`)).join(' ');
 	return [
 		"' Opens Worklog in its own window. Made by npm run shortcut:install.",
 		'Set shell = CreateObject("WScript.Shell")',
-		'If Not shell.AppActivate("Worklog |") Then',
-		`	shell.CurrentDirectory = "${vbs(APP_ROOT)}"`,
-		`	shell.Run "${vbs(line)}", 0, False`,
-		'End If',
+		`shell.CurrentDirectory = "${vbs(APP_ROOT)}"`,
+		`shell.Run "${vbs(line)}", 0, False`,
 		'',
 	].join('\r\n');
 }

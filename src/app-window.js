@@ -1,5 +1,6 @@
 // Finds a browser that can open Worklog as a window of its own (app mode).
 
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -63,4 +64,36 @@ export function windowArgs(url, profile, appId = null) {
 		'--no-pings',
 		'--disable-gpu',
 	];
+}
+
+// Windows-only helpers. Each runs one short PowerShell command with the
+// values passed through the environment, so no path needs quoting.
+function powershell(script, env = {}) {
+	if (process.platform !== 'win32') return '';
+	const out = spawnSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script],
+		{ encoding: 'utf8', windowsHide: true, timeout: 15000, env: { ...process.env, ...env } });
+	return (out.stdout ?? '').trim();
+}
+
+/**
+ * The process id of a browser window that uses Worklog's own profile, or
+ * null. Found by the profile in its command line, never by window title,
+ * because any browser tab of the page carries the same title.
+ */
+export function profileWindowPid(profile) {
+	const pid = Number(powershell(`$ids = Get-CimInstance Win32_Process -Filter "Name='msedge.exe' OR Name='chrome.exe'" |
+		Where-Object { $_.CommandLine -and $_.CommandLine.Contains($env:WL_PROFILE) } | ForEach-Object { $_.ProcessId }
+		Get-Process -Id $ids -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } |
+		Select-Object -First 1 -ExpandProperty Id`, { WL_PROFILE: profile }));
+	return Number.isInteger(pid) && pid > 0 ? pid : null;
+}
+
+/** Brings that window to the front. */
+export function focusWindow(pid) {
+	powershell('(New-Object -ComObject WScript.Shell).AppActivate([int]$env:WL_PID) | Out-Null', { WL_PID: String(pid) });
+}
+
+/** True while the Worklog installer runs (it holds the WorklogSetup mutex). */
+export function setupRunning() {
+	return powershell("try { [Threading.Mutex]::OpenExisting('WorklogSetup').Dispose(); 'yes' } catch { 'no' }") === 'yes';
 }

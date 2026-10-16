@@ -95,8 +95,8 @@ export function createUpdater({ dir, current, enabled, fetch = globalThis.fetch,
 		}
 	}
 
-	async function check() {
-		if (!enabled()) {
+	async function check(force = false) {
+		if (!enabled() && !force) {
 			state = { ...state, status: 'off' };
 			return state;
 		}
@@ -138,8 +138,9 @@ export function createUpdater({ dir, current, enabled, fetch = globalThis.fetch,
 			timer = setInterval(() => this.check(), EVERY_MS);
 			timer.unref?.();
 		},
-		check() {
-			busy ??= check().finally(() => { busy = null; });
+		/** force looks even when updating by itself is off, for the button on the settings page. */
+		check({ force = false } = {}) {
+			busy ??= check(force).finally(() => { busy = null; });
 			return busy;
 		},
 		status: () => ({ ...state }),

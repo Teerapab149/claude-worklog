@@ -78,7 +78,8 @@ function projectInput(db, key) {
 	return { input: lines.join('\n'), sourceTs };
 }
 
-export function createSummaryQueue({ db, config, run = runSummary, log = () => {}, now = Date.now }) {
+// onDone runs after each summary is saved or fails, so open pages can show it.
+export function createSummaryQueue({ db, config, run = runSummary, log = () => {}, now = Date.now, onDone = () => {} }) {
 	const queue = [];
 	const queued = new Set();
 	let running = null;
@@ -145,6 +146,7 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 		}
 		finally {
 			running = null;
+			onDone();
 		}
 		setImmediate(pump);
 	}

@@ -40,7 +40,10 @@ async function api(path, { body, ...options } = {}) {
 	}
 	const res = await fetch(path, options);
 	if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-	return res.json();
+	const data = await res.json();
+	// The overview and settings say whether the settings file could be read.
+	if (data && 'warning' in data) setNotice('config', data.warning);
+	return data;
 }
 
 // Time
@@ -237,7 +240,7 @@ function releaseBars() {
 let pollTimer = null;
 function pollWhileBusy(anyBusy) {
 	clearTimeout(pollTimer);
-	if (anyBusy) pollTimer = setTimeout(() => route({ quiet: true }), 3000);
+	if (anyBusy) pollTimer = setTimeout(() => route({ quiet: true, auto: true }), 3000);
 }
 
 function pausedNote(summarizer) {
@@ -626,13 +629,34 @@ app.addEventListener('click', event => {
 });
 
 function updateText(version, u) {
-	if (!u.auto) return `เวอร์ชัน ${version} ปิดการอัปเดตเองไว้`;
-	if (u.status === 'ready') return `เวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว จะติดตั้งเองหลังจากปิดหน้าต่าง Worklog`;
+	if (u.last && !u.last.ok) return `อัปเดตเป็นเวอร์ชัน ${u.last.version} ไม่สำเร็จ ตอนนี้ยังเป็น ${version} กดติดตั้งตอนนี้เพื่อลองอีกครั้งแบบเห็นความคืบหน้า`;
+	if (u.status === 'ready') {
+		return u.auto
+			? `เวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว จะติดตั้งเองหลังจากปิดหน้าต่าง Worklog หรือกดติดตั้งตอนนี้`
+			: `มีเวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว กดติดตั้งตอนนี้เมื่อพร้อม`;
+	}
+	if (u.last?.ok && u.last.version === version && u.status !== 'error') return `อัปเดตเป็นเวอร์ชัน ${version} เรียบร้อยแล้ว`;
+	if (!u.auto) return `เวอร์ชัน ${version} ปิดการอัปเดตเองไว้ กดตรวจตอนนี้เพื่อดูว่ามีเวอร์ชันใหม่ไหม`;
 	if (u.status === 'downloading') return `กำลังดาวน์โหลดเวอร์ชัน ${u.latest}`;
 	if (u.status === 'checking' || u.status === 'idle') return `เวอร์ชัน ${version} กำลังตรวจหาเวอร์ชันใหม่`;
 	if (u.status === 'error') return `เวอร์ชัน ${version} ตรวจหาเวอร์ชันใหม่ไม่สำเร็จ ${u.error ?? ''}`.trim();
 	return `เวอร์ชัน ${version} เป็นเวอร์ชันล่าสุดแล้ว${u.checkedAt ? ` ตรวจเมื่อ ${formatTime(u.checkedAt)}` : ''}`;
 }
+
+app.addEventListener('click', async event => {
+	const install = event.target.closest('[data-update-install]');
+	if (!install) return;
+	install.disabled = true;
+	install.textContent = 'กำลังปิดเพื่อติดตั้ง';
+	try {
+		await api('/api/update/install', { method: 'POST' });
+		install.closest('.how-row').querySelector('p').textContent = 'Worklog จะปิดหน้าต่างนี้ ติดตั้งเวอร์ชันใหม่ แล้วเปิดขึ้นมาเอง';
+	}
+	catch {
+		install.disabled = false;
+		install.textContent = 'ติดตั้งไม่สำเร็จ';
+	}
+});
 
 app.addEventListener('click', async event => {
 	const button = event.target.closest('[data-update-check]');
@@ -714,7 +738,9 @@ async function renderSettings() {
 		${update ? box('อัปเดต', `<div class="fields">
 			<label class="switch"><input type="checkbox" name="updatesAuto" ${update.auto ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>อัปเดตเองเมื่อมีเวอร์ชันใหม่</span></label>
 			<div class="how-row"><p>${esc(updateText(version, update))}</p>
-				<button class="btn-copy" type="button" data-update-check ${update.auto ? '' : 'disabled'}>ตรวจตอนนี้</button></div>
+				<span class="mark-actions">
+					${update.status === 'ready' && update.canInstallNow ? '<button class="btn-copy" type="button" data-update-install>ติดตั้งตอนนี้</button>' : ''}
+					<button class="btn-copy" type="button" data-update-check>ตรวจตอนนี้</button></span></div>
 			<p class="field-help">Worklog ถาม GitHub ว่ามีเวอร์ชันใหม่ไหม ถ้ามีจะดาวน์โหลดไว้ แล้วติดตั้งเองหลังจากปิดหน้าต่าง ครั้งถัดไปที่เปิดจะเป็นเวอร์ชันใหม่ ค่าที่ตั้งไว้และข้อมูลยังอยู่ครบ</p>
 		</div>`) : ''}
 		<div class="save-bar">
@@ -922,16 +948,39 @@ async function renderSession(id) {
 
 const PAGES = { '/': 'today', '/projects': 'projects', '/accounts': 'accounts', '/settings': 'settings' };
 
-async function route({ quiet = false } = {}) {
+// Open disclosures are matched by their own label and the heading of the
+// block around them, so a redraw can open the same ones again.
+const disclosureKey = d => `${d.closest('article, section, .row, .rod')?.querySelector('h2, h3, .rod-name, .row-title')?.textContent ?? ''}|${d.querySelector('summary')?.textContent ?? ''}`;
+
+/** True while the person is typing or choosing something on the page, which a redraw would wipe. */
+function busyEditing() {
+	const el = document.activeElement;
+	return Boolean(el && app.contains(el) && el.matches('input, textarea, select'));
+}
+
+let lastRefresh = 0;
+
+/**
+ * auto marks a refresh nobody asked for (a log changed, a summary finished,
+ * the window came back). Those wait while the person is typing, leave the
+ * settings form alone, and keep open disclosures, focus and scroll as they were.
+ */
+async function route({ quiet = false, auto = false } = {}) {
 	const hash = location.hash.replace(/^#/, '') || '/';
 	const [, kind, rawId] = hash.match(/^\/(p|s)\/(.+)$/) ?? [];
 	const page = PAGES[hash] ?? (kind === 's' || kind === 'p' ? 'projects' : 'today');
+	if (auto && (page === 'settings' || busyEditing())) {
+		if (page !== 'settings') pollTimer = setTimeout(() => route({ quiet: true, auto: true }), 3000);
+		return;
+	}
 	for (const link of document.querySelectorAll('.nav')) {
 		if (link.dataset.page === page) link.setAttribute('aria-current', 'page');
 		else link.removeAttribute('aria-current');
 	}
 	clearTimeout(pollTimer);
 	const scrollY = window.scrollY;
+	const open = quiet ? new Set([...app.querySelectorAll('details[open]')].map(disclosureKey)) : new Set();
+	const focusKey = quiet && document.activeElement?.closest?.('#app') ? document.activeElement.textContent : null;
 	animateBars = !quiet;
 	if (!quiet) loading(page === 'projects' && !kind ? 'single' : 'cols');
 	try {
@@ -942,9 +991,14 @@ async function route({ quiet = false } = {}) {
 		else if (page === 'settings') await renderSettings();
 		else await renderToday();
 		if (animateBars) releaseBars();
+		lastRefresh = Date.now();
 	}
 	catch (error) {
 		if (!quiet) failed(error);
+	}
+	if (quiet) {
+		for (const d of app.querySelectorAll('details')) if (open.has(disclosureKey(d))) d.open = true;
+		if (focusKey) [...app.querySelectorAll('a, button, summary')].find(el => el.textContent === focusKey)?.focus({ preventScroll: true });
 	}
 	window.scrollTo(0, quiet ? scrollY : 0);
 }
@@ -1032,6 +1086,41 @@ window.addEventListener('appinstalled', () => {
 window.addEventListener('hashchange', () => route());
 route();
 
-// Tells the server this page is open. When Worklog runs as an app it stops
-// once no page has been open for a few seconds. EventSource reconnects on its own.
-if ('EventSource' in window) new EventSource('/api/alive');
+// A line at the bottom of the window for things that concern the whole app:
+// a settings file that could not be read, or a Worklog that has closed.
+const notices = new Map();
+function setNotice(key, text) {
+	if (text) notices.set(key, text);
+	else notices.delete(key);
+	const box = document.getElementById('notice');
+	box.textContent = [...notices.values()].join(' ');
+	box.hidden = notices.size === 0;
+}
+
+// Tells the server this page is open, and hears from it when logs or
+// summaries change. When Worklog runs as an app it stops once no page has
+// been open for a few seconds. EventSource reconnects on its own.
+if ('EventSource' in window) {
+	const stream = new EventSource('/api/alive');
+	let goneTimer = null, wasGone = false;
+	stream.addEventListener('changed', () => route({ quiet: true, auto: true }));
+	stream.addEventListener('open', () => {
+		clearTimeout(goneTimer);
+		goneTimer = null;
+		setNotice('gone', null);
+		// Back after a restart or an update: what is on screen may be old.
+		if (wasGone) route({ quiet: true, auto: true });
+		wasGone = false;
+	});
+	stream.addEventListener('error', () => {
+		goneTimer ??= setTimeout(() => {
+			wasGone = true;
+			setNotice('gone', 'Worklog ปิดไปแล้ว หน้านี้จะไม่อัปเดตอีก ปิดหน้าต่างนี้แล้วเปิด Worklog จากไอคอนอีกครั้ง');
+		}, 5000);
+	});
+}
+
+// Coming back to the window after a while shows what changed meanwhile.
+window.addEventListener('focus', () => {
+	if (Date.now() - lastRefresh > 60000) route({ quiet: true, auto: true });
+});

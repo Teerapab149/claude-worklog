@@ -43,6 +43,7 @@ const SECURITY_HEADERS = [
  */
 function createPresence(idle) {
 	let open = 0;
+	const streams = new Set();
 	let timer = idle ? setTimeout(() => idle.onIdle(), idle.firstMs ?? 60000) : null;
 	return {
 		join(req, res) {
@@ -51,9 +52,11 @@ function createPresence(idle) {
 			// Something must cross the stream now and then, or it may be dropped as dead.
 			const ping = setInterval(() => res.write(': ping\n\n'), 25000);
 			open++;
+			streams.add(res);
 			clearTimeout(timer);
 			req.on('close', () => {
 				clearInterval(ping);
+				streams.delete(res);
 				open--;
 				if (idle && open === 0) timer = setTimeout(() => idle.onIdle(), idle.graceMs ?? 10000);
 			});
@@ -61,14 +64,24 @@ function createPresence(idle) {
 		stop: () => clearTimeout(timer),
 		/** How many pages are open right now. */
 		count: () => open,
+		/** Tells every open page that something changed, so it can show it. */
+		tell(event) {
+			for (const res of streams) res.write(`event: ${event}
+data: {}
+
+`);
+		},
 	};
 }
 
 // configFile is where the settings page saves; without one the page is read only.
 // appInstalled tells whether the app window's profile has Worklog installed as an app.
 // updater is there only in a copy from the installer (see src/update.js).
-export function createApp({ db, config, configFile = null, appInstalled = null, updater = null, queue = null, log = console.log, idle = null }) {
+// configWarning is shown on every page when the settings file could not be read.
+// onInstallNow closes the app and runs the downloaded installer (bin/app.js).
+export function createApp({ db, config, configFile = null, configWarning = null, appInstalled = null, updater = null, onInstallNow = null, queue = null, log = console.log, idle = null }) {
 	let lastScan = null;
+	let warning = configWarning;
 	const presence = createPresence(idle);
 
 	function runScan() {
@@ -77,6 +90,8 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			const stats = scan(db, config);
 			lastScan = { at: Date.now(), ms: Date.now() - started, stats, error: null };
 			queue?.enqueueStale();
+			// Pages refresh themselves only when a log actually changed.
+			if (stats.read || stats.failed) presence.tell('changed');
 		}
 		catch (error) {
 			lastScan = { at: Date.now(), ms: Date.now() - started, stats: null, error: error.message };
@@ -90,6 +105,7 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			const active = queries.activeSessions(db, config);
 			return {
 				scan: lastScan,
+				warning,
 				summarizer: queue?.status() ?? null,
 				accounts: queries.accounts(db, config),
 				next: queries.nextUp(db, config),
@@ -124,9 +140,14 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			const saved = savedKey(config.summary, api.preset, api.baseUrl);
 			return testApi({ ...api, apiKey: api.apiKey || saved, needsKey: API_PRESETS[api.preset].needsKey });
 		}],
+		['POST', /^\/api\/update\/install$/, () => {
+			if (!updater || !onInstallNow || updater.status().status !== 'ready') return null;
+			onInstallNow();
+			return { installing: true };
+		}],
 		['POST', /^\/api\/update\/check$/, async () => {
 			if (!updater) return null;
-			await updater.check();
+			await updater.check({ force: true });
 			return settingsBody();
 		}],
 	];
@@ -156,14 +177,22 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 			summaryRunning: Boolean(queue),
 			appInstalled: appInstalled ? appInstalled() : null,
 			version: VERSION,
-			update: updater ? { ...updater.status(), auto: config.updates.auto } : null,
+			update: updater ? { ...updater.status(), auto: config.updates.auto, canInstallNow: Boolean(onInstallNow) } : null,
+			warning,
 			...extra,
 		};
 	}
 
 	function saveSettings(body) {
 		if (!configFile) throw httpError(409, 'read_only');
-		const local = readLocalConfig(configFile);
+		let local;
+		try { local = readLocalConfig(configFile); }
+		catch {
+			// The file would not parse when Worklog started either. Keep a copy
+			// of it for the person, then write a fresh one from the page.
+			fs.copyFileSync(configFile, `${configFile}.broken`);
+			local = {};
+		}
 		const known = new Set(db.raw.prepare("SELECT uuid FROM accounts WHERE tool = 'claude'").all().map(a => a.uuid));
 		const { next, changed } = settings.merge(local, body ?? {}, known);
 		writeLocalConfig(next, configFile);
@@ -174,6 +203,7 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		if (changed.folders) regroup(db, config);
 		if (changed.folders || changed.accounts) runScan();
 		if (changed.updatesOn) updater?.check();
+		warning = null;
 		return settingsBody({ saved: true, regrouped: changed.folders });
 	}
 
@@ -315,9 +345,11 @@ function logDirs(config) {
 	].filter(Boolean);
 }
 
-export function startServer({ db, config, configFile = null, appInstalled = null, updater = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
-	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
-	const app = createApp({ db, config, configFile, appInstalled, updater, queue, log, idle });
+export function startServer({ db, config, configFile = null, configWarning = null, appInstalled = null, updater = null, onInstallNow = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
+	let tell = () => {};
+	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, onDone: () => tell(), ...(run ? { run } : {}) }) : null;
+	const app = createApp({ db, config, configFile, configWarning, appInstalled, updater, onInstallNow, queue, log, idle });
+	tell = () => app.presence.tell('changed');
 	const server = http.createServer(app.handle);
 	return new Promise((resolve, reject) => {
 		server.once('error', reject);

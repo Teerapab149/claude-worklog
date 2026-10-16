@@ -542,6 +542,14 @@ textarea.input { resize: vertical; min-height: 64px; }
 /* States. */
 
 .empty { padding: 24px; border-radius: var(--r-md); background: var(--sunk); color: var(--ink-2); text-align: center; }
+/* A note about the whole app, floating at the bottom of the window. */
+.notice {
+	position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 10;
+	width: min(640px, calc(100vw - 32px)); margin: 0; padding: 12px 18px; border-radius: 16px;
+	background: var(--alert-soft); color: var(--alert-ink); font-size: 14.5px;
+	box-shadow: 0 4px 0 color-mix(in srgb, var(--alert-ink) 25%, transparent), 0 10px 24px rgb(90 64 40 / 14%);
+}
+.notice[hidden] { display: none; }
 .error-box { padding: 20px 24px; border-radius: var(--r-md); background: var(--alert-soft); color: var(--alert-ink); display: grid; gap: 12px; justify-items: start; }
 .skeleton { border-radius: var(--r-lg); background: var(--panel); box-shadow: var(--depth); height: 180px; opacity: .7; }
 .skeleton.tall { height: 340px; }

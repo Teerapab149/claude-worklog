@@ -12,9 +12,9 @@ test('start-at-login files keep paths with spaces and special characters intact'
 		/shell\.Run """C:\\Program Files\\node\.exe"" --flag ""C:\\a ""b""\\serve\.js"" --log", 0, False/);
 });
 
-test('the shortcut brings an open window forward instead of opening another', () => {
+test('the shortcut always starts app.js and never picks a window by its title', () => {
 	const vbs = appLauncher(['C:\\node.exe', '--flag', 'C:\\w\\bin\\app.js']);
-	assert.match(vbs, /If Not shell\.AppActivate\("Worklog \|"\) Then/);
+	assert.doesNotMatch(vbs, /AppActivate/);
 	assert.match(vbs, /shell\.Run """C:\\node\.exe"" --flag ""C:\\w\\bin\\app\.js""", 0, False/);
 });
 
