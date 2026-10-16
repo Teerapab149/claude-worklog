@@ -811,12 +811,21 @@ rescanBtn.addEventListener('click', async () => {
 	}
 });
 
+/** Gives the app window's title bar the page's ground colour, including a theme picked with the button. */
+function syncTitleBar() {
+	const ground = getComputedStyle(document.documentElement).getPropertyValue('--ground').trim();
+	if (ground) for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.content = ground;
+}
+
 themeBtn.addEventListener('click', () => {
 	const root = document.documentElement;
 	const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
 	root.dataset.theme = dark ? 'light' : 'dark';
 	try { localStorage.setItem('worklog-theme', root.dataset.theme); } catch {}
+	syncTitleBar();
 });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTitleBar);
+syncTitleBar();
 
 window.addEventListener('hashchange', () => route());
 route();
