@@ -21,7 +21,7 @@ test('a summary through the API sends the key, asks for JSON and cleans the repl
 	let sent;
 	const fetch = async (url, init) => {
 		sent = { url, init, body: JSON.parse(init.body) };
-		return reply('```json\n{"headline":"ทำหน้า A — เสร็จแล้ว","status":"done","done":["หน้า A"],"in_progress":[],"next_steps":[],"waiting_on":[],"deadlines":[]}\n```');
+		return reply('```json\n{"headline":"ทำหน้า A \u2014 เสร็จแล้ว","status":"done","done":["หน้า A"],"in_progress":[],"next_steps":[],"waiting_on":[],"deadlines":[]}\n```');
 	};
 	const out = await runApi({ system: 'S', input: 'I', config, fetch });
 	assert.equal(sent.url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');
