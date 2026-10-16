@@ -85,7 +85,7 @@ The Claude Code hooks keep working while the app is closed, since they read the 
 
 ## Configuration
 
-The settings page in Worklog edits the common ones: project folders, excluded folders, account names, AI summaries (Claude Code CLI or an OpenAI-style API, with a button to test the key) and overlap warnings. Saving applies them at once, except turning AI summaries back on, which starts the next time Worklog opens. Changing project folders regroups projects without reading every log again.
+The settings page in Worklog edits the common ones: project folders, excluded folders, account names, AI summaries (Claude Code CLI, where the page shows which account it is signed in as, or an OpenAI-style API, with a button to test the key) and overlap warnings. Saving applies them at once, except turning AI summaries back on, which starts the next time Worklog opens. Changing project folders regroups projects without reading every log again.
 
 All settings live in `config.local.json`; anything the page does not show can be edited there. See [config.example.json](config.example.json).
 

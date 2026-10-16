@@ -333,3 +333,33 @@ export async function testApi(api, { fetch = globalThis.fetch, timeoutMs = 30000
 		return { ok: false, message: error.message, models };
 	}
 }
+
+/**
+ * Whether the claude CLI is there and signed in, and as whom, from
+ * `claude auth status`. It costs no quota. Returns
+ * { found, loggedIn, email, plan } and never throws.
+ */
+export function claudeStatus(config, { run = spawn, timeoutMs = 20000 } = {}) {
+	return new Promise(resolve => {
+		let child, out = '';
+		try {
+			child = run(resolveClaudeBin(config.summary.claudeBin), ['auth', 'status', '--json'], { windowsHide: true });
+		}
+		catch {
+			return resolve({ found: false, loggedIn: false });
+		}
+		const timer = setTimeout(() => { child.kill(); resolve({ found: true, loggedIn: false, error: 'claude ตอบช้าเกินไป' }); }, timeoutMs);
+		child.stdout?.on('data', d => { out += d; });
+		child.on('error', error => {
+			clearTimeout(timer);
+			resolve({ found: error.code !== 'ENOENT', loggedIn: false, error: error.code === 'ENOENT' ? null : error.message });
+		});
+		child.on('close', () => {
+			clearTimeout(timer);
+			let data;
+			try { data = JSON.parse(out); }
+			catch { return resolve({ found: true, loggedIn: false, error: 'อ่านผลจาก claude auth status ไม่ได้ อาจเป็นเวอร์ชันเก่า' }); }
+			resolve({ found: true, loggedIn: data.loggedIn === true, email: data.email ?? null, plan: data.subscriptionType ?? null });
+		});
+	});
+}

@@ -1,6 +1,6 @@
 {
   "name": "claude-worklog",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Reads Claude Code and Codex session logs across accounts and projects so you can see where each piece of work stopped.",
   "type": "module",
   "private": true,

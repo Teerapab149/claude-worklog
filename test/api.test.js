@@ -89,3 +89,23 @@ test('API settings refuse plain http off this machine and keep keys away from th
 	assert.equal(JSON.stringify(shown).includes('AIza-old'), false);
 	db.close();
 });
+
+test('the claude login check reads auth status and copes with a missing or old CLI', async () => {
+	const { claudeStatus } = await import('../src/summarizer.js');
+	const config = resolveConfig({ summary: { claudeBin: 'claude' } });
+	const fakeRun = (stdout, { fail } = {}) => () => {
+		const handlers = {};
+		const child = {
+			stdout: { on: (_, f) => { if (stdout) setImmediate(() => f(Buffer.from(stdout))); } },
+			on: (event, f) => { handlers[event] = f; },
+			kill() {},
+		};
+		setImmediate(() => setImmediate(() => (fail ? handlers.error?.(fail) : handlers.close?.(0))));
+		return child;
+	};
+	assert.deepEqual(await claudeStatus(config, { run: fakeRun('{"loggedIn":true,"email":"a@b.c","subscriptionType":"max"}') }),
+		{ found: true, loggedIn: true, email: 'a@b.c', plan: 'max' });
+	assert.equal((await claudeStatus(config, { run: fakeRun('{"loggedIn":false}') })).loggedIn, false);
+	assert.equal((await claudeStatus(config, { run: fakeRun('Unknown command: auth') })).found, true);
+	assert.equal((await claudeStatus(config, { run: fakeRun('', { fail: Object.assign(new Error('x'), { code: 'ENOENT' }) }) })).found, false);
+});

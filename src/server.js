@@ -9,7 +9,7 @@ import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
 import * as settings from './settings.js';
 import { createSummaryQueue } from './summaries.js';
-import { API_PRESETS, testApi } from './summarizer.js';
+import { API_PRESETS, claudeStatus, testApi } from './summarizer.js';
 import { watchLogs } from './watch.js';
 
 const PUBLIC_DIR = path.join(APP_ROOT, 'public');
@@ -109,6 +109,7 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		}],
 		['GET', /^\/api\/settings$/, () => settingsBody()],
 		['PUT', /^\/api\/settings$/, (_, body) => saveSettings(body)],
+		['POST', /^\/api\/summary\/claude-status$/, () => claudeStatus(config)],
 		['POST', /^\/api\/summary\/test$/, async (_, body) => {
 			const api = settings.checkApi(body);
 			const saved = config.summary.api?.keys?.[api.preset] ?? '';

@@ -596,6 +596,35 @@ app.addEventListener('click', async event => {
 	}
 });
 
+const PLAN_NAME = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise', free: 'Free' };
+
+/** Asks the server whether the claude CLI is there and signed in, and says so under the Claude choice. */
+async function checkClaude() {
+	const line = document.getElementById('claude-status');
+	if (!line) return;
+	line.className = 'save-status';
+	line.textContent = 'กำลังตรวจ claude CLI';
+	let s;
+	try { s = await api('/api/summary/claude-status', { method: 'POST' }); }
+	catch { s = { found: true, loggedIn: false, error: 'ตรวจไม่สำเร็จ' }; }
+	const now = document.getElementById('claude-status');
+	if (!now) return;
+	if (s.loggedIn) {
+		now.className = 'save-status is-ok';
+		now.textContent = `login แล้วด้วย ${s.email ?? 'บัญชี Claude'}${s.plan ? ` (แผน ${PLAN_NAME[s.plan] ?? s.plan})` : ''} การสรุปจะใช้โควต้าของบัญชีนี้`;
+	}
+	else {
+		now.className = 'save-status is-error';
+		now.textContent = !s.found
+			? 'หาคำสั่ง claude ในเครื่องนี้ไม่เจอ ให้ติดตั้ง Claude Code CLI ก่อน หรือเลือกใช้ API แทน'
+			: `พบ claude แต่ยังไม่ได้ login ให้เปิด Command Prompt แล้วพิมพ์ claude auth login จากนั้นทำตามขั้นตอนในเบราว์เซอร์ แล้วกดตรวจอีกครั้ง${s.error ? ` (${s.error})` : ''}`;
+	}
+}
+
+app.addEventListener('click', event => {
+	if (event.target.closest('[data-claude-check]')) checkClaude();
+});
+
 function updateText(version, u) {
 	if (!u.auto) return `เวอร์ชัน ${version} ปิดการอัปเดตเองไว้`;
 	if (u.status === 'ready') return `เวอร์ชัน ${u.latest} ดาวน์โหลดไว้แล้ว จะติดตั้งเองหลังจากปิดหน้าต่าง Worklog`;
@@ -666,7 +695,9 @@ async function renderSettings() {
 			<fieldset class="choices"><legend class="field-label">ใช้อะไรสรุป</legend>
 				${radio('provider', 'claude', 'Claude Code CLI ใช้โควต้าของบัญชี Claude ที่ login ไว้ในเครื่องนี้', ed.summary.provider === 'claude')}
 				${radio('provider', 'api', 'API แบบ OpenAI เช่น Gemini, Groq, OpenRouter หรือ Ollama ในเครื่อง', ed.summary.provider === 'api')}</fieldset>
-			<div class="provider-pane" data-provider="claude" ${ed.summary.provider === 'claude' ? '' : 'hidden'}>
+			<div class="provider-pane fields" data-provider="claude" ${ed.summary.provider === 'claude' ? '' : 'hidden'}>
+				<div class="how-row"><p class="save-status" id="claude-status" role="status">กำลังตรวจ claude CLI</p>
+					<button class="btn-copy" type="button" data-claude-check>ตรวจอีกครั้ง</button></div>
 				<fieldset class="choices"><legend class="field-label">โมเดล</legend>
 					${Object.entries(SUMMARY_MODEL).map(([v, t]) => radio('model', v, t, ed.summary.model === v)).join('')}</fieldset>
 			</div>
@@ -698,6 +729,7 @@ async function renderSettings() {
 			${fact('ที่เก็บข้อมูลของ Worklog', `<span class="mono">${esc(st.dataDir)}</span>`)}
 		</dl>`)}
 	</div>`;
+	checkClaude();
 }
 
 app.addEventListener('submit', async event => {
