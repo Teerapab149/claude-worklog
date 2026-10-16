@@ -53,7 +53,7 @@ export function applyRecord(s, r, { onEdit = () => {}, onQuota = () => {} } = {}
 		if (!s.first_ts || ts < s.first_ts) s.first_ts = ts;
 		if (!s.last_ts || ts > s.last_ts) s.last_ts = ts;
 	}
-	if (r.cwd && !s.cwd) s.cwd = r.cwd;
+	if (typeof r.cwd === 'string' && r.cwd && !s.cwd) s.cwd = r.cwd;
 	if (r.version) s.version = r.version;
 	if (r.entrypoint) s.entrypoint = r.entrypoint;
 	if (r.gitBranch) s.git_branch = r.gitBranch;
@@ -75,7 +75,7 @@ export function applyRecord(s, r, { onEdit = () => {}, onQuota = () => {} } = {}
 			if (r.lastPrompt) s.last_prompt = clip(r.lastPrompt);
 			break;
 		case 'relocated':
-			if (r.relocatedCwd) s.cwd = r.relocatedCwd;
+			if (typeof r.relocatedCwd === 'string' && r.relocatedCwd) s.cwd = r.relocatedCwd;
 			break;
 		case 'pr-link':
 			if (r.prUrl) s.pr_url = r.prUrl;

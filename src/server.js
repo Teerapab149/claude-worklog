@@ -25,6 +25,14 @@ const TYPES = {
 };
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const httpError = (status, message) => Object.assign(new Error(message), { status });
+// No other site may frame the page or run code in it, even if text from a
+// log slipped past escaping. Inline styles stay allowed for the tube widths.
+const SECURITY_HEADERS = [
+	['content-security-policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"],
+	['x-content-type-options', 'nosniff'],
+	['x-frame-options', 'DENY'],
+	['referrer-policy', 'no-referrer'],
+];
 
 /**
  * Keeps count of open pages. Each page holds one event stream open for as
@@ -196,7 +204,9 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 	}
 
 	function serveStatic(res, pathname) {
-		const rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1));
+		let rel;
+		try { rel = pathname === '/' ? 'index.html' : decodeURIComponent(pathname.slice(1)); }
+		catch { return sendJson(res, 400, { error: 'bad_path' }); }
 		const file = path.resolve(PUBLIC_DIR, rel);
 		if (!file.startsWith(PUBLIC_DIR + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
 			res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
@@ -235,7 +245,20 @@ export function createApp({ db, config, configFile = null, appInstalled = null, 
 		});
 	}
 
-	async function handle(req, res) {
+	/**
+	 * Every request goes through here, so nothing a request does can bring the
+	 * server down: a page elsewhere can send any URL at all to localhost.
+	 */
+	function handle(req, res) {
+		for (const [name, value] of SECURITY_HEADERS) res.setHeader(name, value);
+		route(req, res).catch(error => {
+			log(`${req.method} ${req.url} failed: ${error.stack}`);
+			if (res.headersSent) res.destroy();
+			else sendJson(res, error instanceof URIError ? 400 : 500, { error: error instanceof URIError ? 'bad_path' : 'internal' });
+		});
+	}
+
+	async function route(req, res) {
 		// Refuse requests addressed to any other host name, so a web page
 		// elsewhere cannot reach this server through DNS rebinding.
 		const host = (req.headers.host ?? '').replace(/:\d+$/, '');

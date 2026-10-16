@@ -16,7 +16,7 @@ function startsWithFolder(lower, prefix) {
  * key is lower case so E:\Research and e:\research land in one project.
  */
 export function resolveProject(cwd, config) {
-	if (!cwd) return null;
+	if (typeof cwd !== 'string' || !cwd) return null;
 	let full = normalizePath(cwd);
 	const lower = full.toLowerCase();
 

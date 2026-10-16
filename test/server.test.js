@@ -110,3 +110,27 @@ test('an account can be marked as limited by hand and cleared, and writes need J
 	assert.equal(cleared.accounts.find(a => a.uuid === 'acct-1').limited, false);
 	assert.equal((await fetch(url)).status, 405);
 });
+
+test('a malformed path gets a 400 and the server keeps running, with security headers on every reply', async t => {
+	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-bad-'));
+	const config = resolveConfig({ claudeDir, codexDir: path.join(claudeDir, 'codex'), summary: { enabled: false } });
+	const db = openDb(':memory:');
+	const server = await startServer({ db, config, port: 0, log: () => {} });
+	t.after(() => { server.close(); db.close(); fs.rmSync(claudeDir, { recursive: true, force: true }); });
+	const base = `http://127.0.0.1:${server.address().port}`;
+	const bad = await fetch(`${base}/%E0`);
+	assert.equal(bad.status, 400);
+	assert.equal((await fetch(`${base}/..%5c..%5cpackage.json`)).status, 404);
+	const page = await fetch(`${base}/`);
+	assert.equal(page.status, 200);
+	assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
+	assert.equal(page.headers.get('x-frame-options'), 'DENY');
+	// The SessionEnd hook asks for a scan; that write must be accepted.
+	const { sessionEnd } = await import('../src/hooks.js');
+	let scanned = false;
+	const original = globalThis.fetch;
+	globalThis.fetch = async (url, init) => { scanned = init.headers['content-type'] === 'application/json'; return original(url, init); };
+	try { await sessionEnd({ port: server.address().port }); }
+	finally { globalThis.fetch = original; }
+	assert.equal(scanned, true);
+});

@@ -107,7 +107,7 @@ export function sessionStart(db, config, input, now = Date.now()) {
 export async function sessionEnd(config) {
 	const port = config.port ?? 4317;
 	try {
-		await fetch(`http://127.0.0.1:${port}/api/scan`, { method: 'POST', signal: AbortSignal.timeout(1000) });
+		await fetch(`http://127.0.0.1:${port}/api/scan`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}', signal: AbortSignal.timeout(1000) });
 	}
 	catch {
 		// The dashboard is not running. Its next start scans anyway.

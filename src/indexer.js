@@ -125,7 +125,7 @@ export function regroup(db, config) {
 }
 
 export function scan(db, config) {
-	const stats = { files: 0, read: 0, unchanged: 0, excluded: 0, badLines: 0, inferred: 0, byTool: {} };
+	const stats = { files: 0, read: 0, unchanged: 0, excluded: 0, badLines: 0, inferred: 0, failed: 0, errors: [], byTool: {} };
 	for (const adapter of enabledAdapters(config)) {
 		const files = adapter.listFiles(config);
 		const ctx = adapter.prepare(config);
@@ -135,7 +135,12 @@ export function scan(db, config) {
 			try { scanFile(db, config, adapter, ctx, file, stats); }
 			catch (error) {
 				// A file deleted or locked mid-scan is retried on the next scan.
-				if (error.code !== 'ENOENT' && error.code !== 'EBUSY') throw error;
+				if (error.code === 'ENOENT' || error.code === 'EBUSY') continue;
+				// Anything else stays with this one file: a log in a format the
+				// reader does not know, or one the system will not let us read,
+				// must not stop every other project from being indexed.
+				stats.failed += 1;
+				if (stats.errors.length < 5) stats.errors.push({ file, message: String(error.message).slice(0, 300) });
 			}
 		}
 		// Stored under a session id of its own, so rescanning one thread never removes it.

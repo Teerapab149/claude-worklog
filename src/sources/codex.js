@@ -75,7 +75,7 @@ export const codex = {
 		const p = r.payload ?? {};
 		switch (r.type) {
 			case 'session_meta':
-				if (p.cwd) s.cwd = p.cwd;
+				if (typeof p.cwd === 'string' && p.cwd) s.cwd = p.cwd;
 				if (p.cli_version) s.version = p.cli_version;
 				if (p.originator) s.entrypoint = p.originator;
 				if (p.git?.branch) s.git_branch = p.git.branch;
@@ -86,7 +86,7 @@ export const codex = {
 				break;
 			case 'turn_context':
 				if (p.model) s.model = p.model;
-				if (p.cwd && !s.cwd) s.cwd = p.cwd;
+				if (typeof p.cwd === 'string' && p.cwd && !s.cwd) s.cwd = p.cwd;
 				break;
 			case 'event_msg':
 				if (p.type === 'thread_settings_applied' && p.thread_settings?.model) s.model = p.thread_settings.model;

@@ -70,3 +70,19 @@ test('scan drops sessions in excluded folders and infers missing accounts', () =
 	db.close();
 	fs.rmSync(claudeDir, { recursive: true, force: true });
 });
+
+test('a log that breaks the reader is skipped and counted, and the rest is still read', () => {
+	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-drift-'));
+	const dir = path.join(claudeDir, 'projects', 'E--x');
+	fs.mkdirSync(dir, { recursive: true });
+	const line = r => JSON.stringify(r) + '\n';
+	fs.writeFileSync(path.join(dir, 'good.jsonl'), line({ type: 'user', cwd: 'E:\a', timestamp: '2026-10-16T01:00:00Z', message: { content: 'ok' } }));
+	// A folder path in a shape the reader has never seen.
+	fs.writeFileSync(path.join(dir, 'odd.jsonl'), line({ type: 'user', cwd: { path: 'E:\b' }, relocatedCwd: 5, timestamp: '2026-10-16T01:00:00Z', message: { content: 'x' } }));
+	const db = openDb(':memory:');
+	const stats = scan(db, resolveConfig({ claudeDir, codexDir: path.join(claudeDir, 'codex') }));
+	assert.equal(stats.read, 2);
+	assert.ok(db.getSession('good'));
+	db.close();
+	fs.rmSync(claudeDir, { recursive: true, force: true });
+});
