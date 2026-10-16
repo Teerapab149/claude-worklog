@@ -11,7 +11,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { appBrowser, windowArgs } from '../src/app-window.js';
+import { appBrowser, installedAppId, windowArgs } from '../src/app-window.js';
 import { configFile, loadConfig } from '../src/config.js';
 import { openDb } from '../src/db.js';
 import { startServer } from '../src/server.js';
@@ -29,7 +29,7 @@ process.on('uncaughtException', error => { log(`app crashed: ${error.stack}`); p
 function openWindow() {
 	const browser = appBrowser(config);
 	if (browser) {
-		spawn(browser, windowArgs(url, profile), { detached: true, stdio: 'ignore' }).unref();
+		spawn(browser, windowArgs(url, profile, installedAppId(profile)), { detached: true, stdio: 'ignore' }).unref();
 		return;
 	}
 	log('ไม่พบ Edge หรือ Chrome จึงเปิดในเบราว์เซอร์หลักแทน');
@@ -58,7 +58,7 @@ function shutdown() {
 }
 
 try {
-	server = await startServer({ db, config, configFile: configFile(), port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
+	server = await startServer({ db, config, configFile: configFile(), appInstalled: () => Boolean(installedAppId(profile)), port, log, idle: { graceMs: 10000, firstMs: 90000, onIdle: shutdown } });
 	log(`เปิดแอปที่ ${url}`);
 }
 catch (error) {

@@ -497,8 +497,28 @@ function field(id, label, control, help = '') {
 	return `<div class="field"><label class="field-label" for="${id}">${label}</label>${control}${help ? `<p class="field-help">${help}</p>` : ''}</div>`;
 }
 
+/** installed comes from the server, which looks in the window's profile; null when not opened from the shortcut. */
+function windowSetting(installed) {
+	if (installed) return '<p class="field-help">Worklog ติดตั้งเป็นแอปแล้ว แถบด้านบนของหน้าต่างใช้สีเดียวกับหน้า</p>';
+	if (installOffer) {
+		return `<div class="how-row"><p>ติดตั้ง Worklog เป็นแอป เพื่อให้แถบด้านบนของหน้าต่างเป็นสีเดียวกับหน้า หลังติดตั้ง ให้ปิดหน้าต่างนี้แล้วเปิดจาก shortcut เดิม</p>
+			<button class="btn-copy" type="button" data-install>ติดตั้งเป็นแอป</button></div>`;
+	}
+	return '<p class="field-help">ติดตั้งเป็นแอปได้เมื่อเปิด Worklog จาก shortcut ถ้าเปิดอยู่แล้วแต่ไม่มีปุ่ม ให้ลองปิดหน้าต่างแล้วเปิดใหม่</p>';
+}
+
+app.addEventListener('click', async event => {
+	const button = event.target.closest('[data-install]');
+	if (!button || !installOffer) return;
+	button.disabled = true;
+	await installOffer.prompt();
+	const { outcome } = await installOffer.userChoice;
+	installOffer = null;
+	button.textContent = outcome === 'accepted' ? 'ติดตั้งแล้ว' : 'ยังไม่ได้ติดตั้ง';
+});
+
 async function renderSettings() {
-	const { scan, settings: st, editable: ed, canSave, summaryRunning } = await api('/api/settings');
+	const { scan, settings: st, editable: ed, canSave, summaryRunning, appInstalled } = await api('/api/settings');
 	showScan(scan);
 	const fact = (k, v) => `<div class="fact"><dt>${k}</dt><dd>${v}</dd></div>`;
 	const on = (yes, a, b) => `<span class="pill ${yes ? 'on' : 'off'}">${yes ? a : b}</span>`;
@@ -541,6 +561,7 @@ async function renderSettings() {
 			<p class="save-status" id="save-status" role="status"></p>
 		</div>
 		</form>
+		${box('หน้าต่าง Worklog', windowSetting(appInstalled))}
 		${box('ที่อยู่ข้อมูล', `<dl class="facts">
 			${fact('ข้อมูลของ Claude Code', `<span class="mono">${esc(st.sources.claude)}</span>`)}
 			${fact('ข้อมูลของ Codex', `<span class="mono">${esc(st.sources.codex)}</span>`)}
@@ -826,6 +847,20 @@ themeBtn.addEventListener('click', () => {
 });
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change', syncTitleBar);
 syncTitleBar();
+
+// Installing Worklog as an app gives its window a title bar in the page's
+// colour. Edge offers the install once the page qualifies; the offer is kept
+// for the button on the settings page.
+let installOffer = null;
+window.addEventListener('beforeinstallprompt', event => {
+	event.preventDefault();
+	installOffer = event;
+	if (location.hash === '#/settings') route({ quiet: true });
+});
+window.addEventListener('appinstalled', () => {
+	installOffer = null;
+	if (location.hash === '#/settings') route({ quiet: true });
+});
 
 window.addEventListener('hashchange', () => route());
 route();

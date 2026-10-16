@@ -42,7 +42,7 @@ npm run shortcut:install
 
 `npm run setup` reads your logs, finds the folders that hold your projects and the Claude accounts you have used, and asks what to call each account. The answers go into `config.local.json`, which git ignores.
 
-`npm run shortcut:install` puts a Worklog icon on the Desktop and in the Start menu (Windows only for now). Double click it and Worklog opens in a window of its own through Edge or Chrome, with no tabs or address bar. Clicking it again while it is open brings the same window forward. About 10 seconds after you close the window everything stops, and nothing is left running. Remove the icons with `npm run shortcut:uninstall`. Elsewhere, `npm run app` opens the same window, or run `npm start` and visit http://localhost:4317 in any browser.
+`npm run shortcut:install` puts a Worklog icon on the Desktop and in the Start menu (Windows only for now). Double click it and Worklog opens in a window of its own through Edge or Chrome, with no tabs or address bar. Clicking it again while it is open brings the same window forward. About 10 seconds after you close the window everything stops, and nothing is left running. Remove the icons with `npm run shortcut:uninstall`. For a title bar in the page's own colour, press "ติดตั้งเป็นแอป" (install as an app) once on the settings page, then close the window and open it again from the icon. Elsewhere, `npm run app` opens the same window, or run `npm start` and visit http://localhost:4317 in any browser.
 
 To keep the server running all the time instead, for example so AI summaries carry on in the background:
 

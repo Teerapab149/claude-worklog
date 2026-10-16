@@ -19,6 +19,8 @@ const TYPES = {
 	'.svg': 'image/svg+xml',
 	'.woff2': 'font/woff2',
 	'.ico': 'image/x-icon',
+	'.png': 'image/png',
+	'.webmanifest': 'application/manifest+json',
 };
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 const httpError = (status, message) => Object.assign(new Error(message), { status });
@@ -52,7 +54,8 @@ function createPresence(idle) {
 }
 
 // configFile is where the settings page saves; without one the page is read only.
-export function createApp({ db, config, configFile = null, queue = null, log = console.log, idle = null }) {
+// appInstalled tells whether the app window's profile has Worklog installed as an app.
+export function createApp({ db, config, configFile = null, appInstalled = null, queue = null, log = console.log, idle = null }) {
 	let lastScan = null;
 	const presence = createPresence(idle);
 
@@ -127,6 +130,7 @@ export function createApp({ db, config, configFile = null, queue = null, log = c
 			canSave: Boolean(configFile),
 			// Turning summaries on needs a restart, because the queue is made at start.
 			summaryRunning: Boolean(queue),
+			appInstalled: appInstalled ? appInstalled() : null,
 			...extra,
 		};
 	}
@@ -258,9 +262,9 @@ function logDirs(config) {
 	].filter(Boolean);
 }
 
-export function startServer({ db, config, configFile = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
+export function startServer({ db, config, configFile = null, appInstalled = null, port = 4317, watch = {}, log = console.log, run, idle = null }) {
 	const queue = config.summary.enabled ? createSummaryQueue({ db, config, log, ...(run ? { run } : {}) }) : null;
-	const app = createApp({ db, config, configFile, queue, log, idle });
+	const app = createApp({ db, config, configFile, appInstalled, queue, log, idle });
 	const server = http.createServer(app.handle);
 	return new Promise((resolve, reject) => {
 		server.once('error', reject);

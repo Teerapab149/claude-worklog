@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { appBrowser } from '../src/app-window.js';
+import { appBrowser, installedAppId, windowArgs } from '../src/app-window.js';
 import { appLauncher, linuxUnit, macPlist, windowsLauncher } from '../src/autostart.js';
 
 const command = ['/usr/bin/node', '--disable-warning=ExperimentalWarning', '/home/a b/100%/"w"/serve.js', '--log'];
@@ -28,4 +28,19 @@ test('the app window prefers the configured browser, then Edge, then Chrome', ()
 	assert.equal(appBrowser({}, { env, exists: has([chrome, edge]) }), edge);
 	assert.equal(appBrowser({}, { env, exists: has([chrome]) }), chrome);
 	assert.equal(appBrowser({}, { env, exists: has([]) }), null);
+});
+
+test('the window opens by app id once Worklog is installed as an app in its profile', () => {
+	const prefs = metrics => () => JSON.stringify({ web_app_install_metrics: metrics });
+	const worklog = 'dabnalfaeamnjifabmgmpkpoeoenfoma';
+	// The YouTube app Edge puts in every profile comes from sync (16) and is skipped.
+	const both = {
+		agimnkijcaahngcdmfeangaknmldooml: { install_source: 16, install_timestamp: '200' },
+		[worklog]: { install_source: 4, install_timestamp: '100' },
+	};
+	assert.equal(installedAppId('P', { read: prefs(both) }), worklog);
+	assert.equal(installedAppId('P', { read: prefs({ agimnkijcaahngcdmfeangaknmldooml: { install_source: 16 } }) }), null);
+	assert.equal(installedAppId('P', { read: () => { throw new Error('no file'); } }), null);
+	assert.equal(windowArgs('http://localhost:4317/', 'P', worklog)[0], `--app-id=${worklog}`);
+	assert.equal(windowArgs('http://localhost:4317/', 'P')[0], '--app=http://localhost:4317/');
 });

@@ -95,3 +95,10 @@ sizes.forEach((size, i) => {
 const out = path.join(APP_ROOT, 'public', 'icon.ico');
 fs.writeFileSync(out, Buffer.concat([header, ...images]));
 console.log(`เขียน ${out} แล้ว (${sizes.join(', ')} px)`);
+
+// The web app manifest needs PNG icons for installing Worklog as an app.
+for (const size of [192, 512]) {
+	const file = path.join(APP_ROOT, 'public', `icon-${size}.png`);
+	fs.writeFileSync(file, png(size));
+	console.log(`เขียน ${file} แล้ว`);
+}
