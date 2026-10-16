@@ -19,11 +19,26 @@ const STATUS = {
 	done: { label: 'เสร็จแล้ว', shape: 's-done' },
 	abandoned: { label: 'เลิกทำแล้ว', shape: 's-done' },
 };
-const PAUSE_TEXT = {
-	auth: 'สรุปด้วย AI ไม่ได้ เพราะ claude CLI ยังไม่ได้ login ให้เปิด Claude Code แล้วใช้คำสั่ง /login จากนั้นกดสรุปอีกครั้ง',
-	rate_limit: 'สรุปด้วย AI ไม่ได้ชั่วคราว เพราะบัญชีที่ claude CLI ใช้อยู่ติด limit ระบบจะลองใหม่เอง',
-	missing_cli: 'หาโปรแกรม claude ไม่เจอ ให้ติดตั้ง Claude Code CLI หรือตั้ง summary.claudeBin ใน config.local.json',
+// What went wrong with a summary and what to do about it, by kind of error
+// and by what does the summarizing. Every fix is a click in Worklog; none
+// asks for a terminal or a file.
+const SUMMARY_TROUBLE = {
+	claude: {
+		auth: 'claude CLI ยังไม่ได้เข้าสู่ระบบ หรือการเข้าสู่ระบบหมดอายุ ไปที่หน้าตั้งค่าแล้วกดเข้าสู่ระบบ Claude หรือเปลี่ยนไปสรุปด้วย API',
+		rate_limit: 'บัญชี Claude ที่ใช้สรุปติด limit อยู่ Worklog จะลองใหม่เอง',
+		missing_cli: 'ไม่พบ claude CLI ในเครื่องนี้ ไปที่หน้าตั้งค่าเพื่อเปลี่ยนไปสรุปด้วย API เช่น Gemini ซึ่งมีแบบใช้ฟรี',
+	},
+	api: {
+		auth: 'API ไม่รับ key ที่ใส่ไว้ ไปที่หน้าตั้งค่าเพื่อใส่ key ใหม่แล้วกดทดสอบ',
+		rate_limit: 'API ที่ใช้สรุปให้รอก่อน เพราะเรียกถี่หรือใช้เกินโควต้า Worklog จะลองใหม่เอง',
+	},
+	any: {
+		timeout: 'AI ใช้เวลานานเกินไป กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ลองโมเดลที่เร็วกว่าในหน้าตั้งค่า',
+		bad_output: 'AI ตอบกลับมาในรูปแบบที่อ่านไม่ได้ กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ลองเปลี่ยนโมเดลในหน้าตั้งค่า',
+		failed: 'สรุปไม่สำเร็จ กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ดูรายละเอียดด้านล่างหรือตรวจในหน้าตั้งค่า',
+	},
 };
+const troubleText = (kind, provider) => SUMMARY_TROUBLE[provider === 'api' ? 'api' : 'claude'][kind] ?? SUMMARY_TROUBLE.any[kind] ?? SUMMARY_TROUBLE.any.failed;
 const ICON = {
 	back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 	search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
@@ -246,11 +261,15 @@ function pollWhileBusy(anyBusy) {
 function pausedNote(summarizer) {
 	const p = summarizer?.paused;
 	if (!p) return '';
-	// With an API the provider's own message says more; the fix is on the settings page.
-	const text = summarizer.provider === 'api'
-		? `สรุปด้วย AI หยุดไว้ก่อน ${p.message} ${p.kind === 'rate_limit' ? 'ระบบจะลองใหม่เอง' : 'ตรวจ API ในหน้าตั้งค่า แล้วกดสรุปอีกครั้ง'}`
-		: PAUSE_TEXT[p.kind] ?? p.message;
-	return `<p class="paused">${esc(text)}</p>`;
+	return `<div class="paused"><p>สรุปด้วย AI หยุดไว้ก่อน ${esc(troubleText(p.kind, summarizer.provider))} <a href="#/settings">ไปที่หน้าตั้งค่า</a></p>
+		${p.message ? `<details class="trouble-detail"><summary>รายละเอียด</summary><p>${esc(p.message)}</p></details>` : ''}</div>`;
+}
+
+/** Why the last summary of this one failed and what to do, with the raw message tucked away. */
+function failedNote(summary, summarizer) {
+	if (!summary?.error || summarizer?.paused) return '';
+	return `<div class="paused"><p>${esc(troubleText(summary.error_kind, summarizer?.provider))}</p>
+		<details class="trouble-detail"><summary>รายละเอียด</summary><p>${esc(summary.error)}</p></details></div>`;
 }
 
 function workingNote(s) {
@@ -291,6 +310,7 @@ function summaryBody(summary, kind, ref, summarizer) {
 				${deadlineBlock(data.deadlines)}
 				${listBlock('ทำเสร็จแล้ว', data.done)}
 			</div>` : ''}
+		${busy ? '' : failedNote(summary, summarizer)}
 		${pausedNote(summarizer)}
 	</div>`;
 }
@@ -352,7 +372,9 @@ function failed(error) {
 
 function showScan(scan) {
 	if (!scan) return;
-	scanMeta.textContent = scan.error ? 'อ่าน log ล่าสุดมีปัญหา' : `อ่าน log ล่าสุดเมื่อ ${formatTime(scan.at)}`;
+	scanMeta.textContent = scan.error || scan.stats?.failed
+		? 'อ่าน log บางส่วนไม่ได้ ดูที่หน้าตั้งค่า'
+		: `อ่าน log ล่าสุดเมื่อ ${formatTime(scan.at)}`;
 }
 
 // Today
@@ -619,13 +641,26 @@ async function checkClaude() {
 	else {
 		now.className = 'save-status is-error';
 		now.textContent = !s.found
-			? 'หาคำสั่ง claude ในเครื่องนี้ไม่เจอ ให้ติดตั้ง Claude Code CLI ก่อน หรือเลือกใช้ API แทน'
-			: `พบ claude แต่ยังไม่ได้ login ให้เปิด Command Prompt แล้วพิมพ์ claude auth login จากนั้นทำตามขั้นตอนในเบราว์เซอร์ แล้วกดตรวจอีกครั้ง${s.error ? ` (${s.error})` : ''}`;
+			? 'ไม่พบ claude CLI ในเครื่องนี้ เลือกสรุปด้วย API แทนได้ เช่น Gemini ซึ่งมีแบบใช้ฟรี'
+			: `claude CLI ยังไม่ได้เข้าสู่ระบบ กดเข้าสู่ระบบ Claude แล้วทำตามขั้นตอนในเบราว์เซอร์ เสร็จแล้วกดตรวจอีกครั้ง${s.error ? ` (${s.error})` : ''}`;
 	}
+	const login = document.querySelector('[data-claude-login]');
+	if (login) login.hidden = s.loggedIn || !s.found;
 }
 
-app.addEventListener('click', event => {
+app.addEventListener('click', async event => {
 	if (event.target.closest('[data-claude-check]')) checkClaude();
+	const login = event.target.closest('[data-claude-login]');
+	if (!login) return;
+	login.disabled = true;
+	try {
+		const { started } = await api('/api/summary/claude-login', { method: 'POST' });
+		document.getElementById('claude-status').textContent = started
+			? 'เปิดหน้าต่างเข้าสู่ระบบแล้ว ทำตามขั้นตอนในเบราว์เซอร์ เสร็จแล้วกดตรวจอีกครั้ง'
+			: 'เปิดหน้าต่างเข้าสู่ระบบไม่ได้';
+	}
+	catch { /* the status line already explains */ }
+	finally { login.disabled = false; }
 });
 
 function updateText(version, u) {
@@ -642,6 +677,18 @@ function updateText(version, u) {
 	if (u.status === 'error') return `เวอร์ชัน ${version} ตรวจหาเวอร์ชันใหม่ไม่สำเร็จ ${u.error ?? ''}`.trim();
 	return `เวอร์ชัน ${version} เป็นเวอร์ชันล่าสุดแล้ว${u.checkedAt ? ` ตรวจเมื่อ ${formatTime(u.checkedAt)}` : ''}`;
 }
+
+app.addEventListener('click', async event => {
+	const button = event.target.closest('[data-hooks]');
+	if (!button) return;
+	button.disabled = true;
+	let message;
+	try { message = (await api('/api/hooks', { method: 'POST', body: { action: button.dataset.hooks } })).hooks.message; }
+	catch { message = 'ทำไม่สำเร็จ'; }
+	await route({ quiet: true });
+	const status = document.getElementById('hooks-status');
+	if (status) status.textContent = message;
+});
 
 app.addEventListener('click', async event => {
 	const install = event.target.closest('[data-update-install]');
@@ -669,6 +716,17 @@ app.addEventListener('click', async event => {
 });
 
 /** installed comes from the server, which looks in the window's profile; null when not opened from the shortcut. */
+/** What the last scan read, and which files it could not, in words. */
+function scanFact(scan) {
+	if (!scan) return 'ยังไม่ได้อ่าน';
+	if (scan.error) return `อ่านไม่สำเร็จ ${esc(scan.error)} กดอ่าน log ใหม่ที่แถบด้านข้างเพื่อลองอีกครั้ง`;
+	const st = scan.stats;
+	const head = `เมื่อ ${esc(formatTime(scan.at))} อ่าน ${st.files} ไฟล์ ใช้เวลา ${(scan.ms / 1000).toFixed(1)} วินาที`;
+	if (!st.failed) return head;
+	return `${head}<br>อ่านไม่ได้ ${st.failed} ไฟล์ อาจเป็นเพราะเครื่องมือเปลี่ยนรูปแบบ log หรือไฟล์ถูกล็อกอยู่ ไฟล์อื่นอ่านได้ปกติ
+		<details class="trouble-detail"><summary>รายละเอียด</summary>${(st.errors ?? []).map(e => `<p><span class="mono">${esc(e.file)}</span> ${esc(e.message)}</p>`).join('')}</details>`;
+}
+
 function windowSetting(installed) {
 	if (installed) return '<p class="field-help">Worklog ติดตั้งเป็นแอปแล้ว แถบด้านบนของหน้าต่างใช้สีเดียวกับหน้า</p>';
 	if (installOffer) {
@@ -721,7 +779,8 @@ async function renderSettings() {
 				${radio('provider', 'api', 'API แบบ OpenAI เช่น Gemini, Groq, OpenRouter หรือ Ollama ในเครื่อง', ed.summary.provider === 'api')}</fieldset>
 			<div class="provider-pane fields" data-provider="claude" ${ed.summary.provider === 'claude' ? '' : 'hidden'}>
 				<div class="how-row"><p class="save-status" id="claude-status" role="status">กำลังตรวจ claude CLI</p>
-					<button class="btn-copy" type="button" data-claude-check>ตรวจอีกครั้ง</button></div>
+					<span class="mark-actions"><button class="btn-copy" type="button" data-claude-login hidden>เข้าสู่ระบบ Claude</button>
+					<button class="btn-copy" type="button" data-claude-check>ตรวจอีกครั้ง</button></span></div>
 				<fieldset class="choices"><legend class="field-label">โมเดล</legend>
 					${Object.entries(SUMMARY_MODEL).map(([v, t]) => radio('model', v, t, ed.summary.model === v)).join('')}</fieldset>
 			</div>
@@ -733,7 +792,10 @@ async function renderSettings() {
 			${field('windowMinutes', 'นับว่าทับกันเมื่อสอง session แก้ไฟล์เดียวกันห่างกันไม่เกิน', `<span class="unit"><input class="input input-num" id="windowMinutes" name="windowMinutes" type="number" min="5" max="240" step="1" value="${ed.overlap.windowMinutes}"> นาที</span>`)}
 			<fieldset class="choices"><legend class="field-label">เมื่อ Claude กำลังจะแก้ไฟล์ที่อีก session เพิ่งแก้</legend>
 				${Object.entries(OVERLAP_MODE).map(([v, t]) => radio('preToolUse', v, t, ed.overlap.preToolUse === v)).join('')}</fieldset>
-			<p class="field-help">hook ของ Worklog ${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')}</p>
+			<div class="how-row"><p>hook ของ Worklog ใน Claude Code ${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')}
+				<span class="field-help">ทำให้ Claude รู้ว่ามีอีก session แก้ไฟล์เดียวกันอยู่ และอ่านสรุปงานล่าสุดก่อนเริ่ม</span></p>
+				<span class="mark-actions"><button class="btn-copy" type="button" data-hooks="${st.hooksInstalled > 0 ? 'uninstall' : 'install'}">${st.hooksInstalled > 0 ? 'เอา hook ออก' : 'ติดตั้ง hook'}</button>
+				<span class="save-status" id="hooks-status" role="status"></span></span></div>
 		</div>`)}
 		${update ? box('อัปเดต', `<div class="fields">
 			<label class="switch"><input type="checkbox" name="updatesAuto" ${update.auto ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>อัปเดตเองเมื่อมีเวอร์ชันใหม่</span></label>
@@ -750,6 +812,7 @@ async function renderSettings() {
 		</form>
 		${box('หน้าต่าง Worklog', windowSetting(appInstalled))}
 		${box('ที่อยู่ข้อมูล', `<dl class="facts">
+			${fact('อ่าน log ล่าสุด', scanFact(scan))}
 			${fact('ข้อมูลของ Claude Code', `<span class="mono">${esc(st.sources.claude)}</span>`)}
 			${fact('ข้อมูลของ Codex', `<span class="mono">${esc(st.sources.codex)}</span>`)}
 			${fact('ที่เก็บข้อมูลของ Worklog', `<span class="mono">${esc(st.dataDir)}</span>`)}

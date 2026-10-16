@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { APP_ROOT, VERSION, readLocalConfig, resolveConfig, writeLocalConfig } from './config.js';
+import { applyHooks } from './hook-install.js';
 import { regroup, scan } from './indexer.js';
 import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
 import * as settings from './settings.js';
 import { createSummaryQueue } from './summaries.js';
-import { API_PRESETS, claudeStatus, savedKey, testApi } from './summarizer.js';
+import { API_PRESETS, claudeLogin, claudeStatus, savedKey, testApi } from './summarizer.js';
 import { watchLogs } from './watch.js';
 
 const PUBLIC_DIR = path.join(APP_ROOT, 'public');
@@ -134,6 +135,11 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		['GET', /^\/api\/settings$/, () => settingsBody()],
 		['PUT', /^\/api\/settings$/, (_, body) => saveSettings(body)],
 		['POST', /^\/api\/summary\/claude-status$/, () => claudeStatus(config)],
+		['POST', /^\/api\/summary\/claude-login$/, () => ({ started: claudeLogin(config) })],
+		['POST', /^\/api\/hooks$/, (_, body) => {
+			if (body?.action !== 'install' && body?.action !== 'uninstall') throw httpError(400, 'bad_action');
+			return settingsBody({ hooks: applyHooks(config, body.action) });
+		}],
 		['POST', /^\/api\/summary\/test$/, async (_, body) => {
 			const api = settings.checkApi(body);
 			// The saved key is used only for the address it belongs to; anywhere else needs the key typed in.

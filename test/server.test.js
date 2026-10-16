@@ -134,3 +134,27 @@ test('a malformed path gets a 400 and the server keeps running, with security he
 	finally { globalThis.fetch = original; }
 	assert.equal(scanned, true);
 });
+
+test('an open page hears when a scan read new lines, and other sites cannot hold it open', async t => {
+	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-live-'));
+	const dir = path.join(claudeDir, 'projects', 'E--x');
+	fs.mkdirSync(dir, { recursive: true });
+	const config = resolveConfig({ claudeDir, codexDir: path.join(claudeDir, 'codex'), summary: { enabled: false } });
+	const db = openDb(':memory:');
+	const server = await startServer({ db, config, port: 0, log: () => {} });
+	const port = server.address().port;
+	t.after(() => { server.closeAllConnections(); server.close(); db.close(); fs.rmSync(claudeDir, { recursive: true, force: true }); });
+
+	const foreign = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: '/api/alive', headers: { host: 'localhost', 'sec-fetch-site': 'cross-site' } }, res => { res.resume(); resolve(res.statusCode); }));
+	assert.equal(foreign, 403);
+
+	const page = await new Promise(resolve => http.get({ host: '127.0.0.1', port, path: '/api/alive', headers: { host: 'localhost' } }, resolve));
+	let text = '';
+	page.on('data', d => { text += d; });
+	assert.equal((await (await fetch(`http://127.0.0.1:${port}/api/ping`)).json()).pages, 1);
+	fs.writeFileSync(path.join(dir, 'new.jsonl'), JSON.stringify({ type: 'user', cwd: 'E:/x', timestamp: '2026-10-16T01:00:00Z', message: { content: 'hi' } }) + '\n');
+	await post(`http://127.0.0.1:${port}/api/scan`);
+	for (let i = 0; i < 20 && !text.includes('event: changed'); i++) await new Promise(r => setTimeout(r, 25));
+	assert.match(text, /event: changed/);
+	page.destroy();
+});

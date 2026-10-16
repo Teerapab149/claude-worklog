@@ -1,46 +1,17 @@
 #!/usr/bin/env node
 // npm run install-hooks     adds Worklog's hooks to Claude Code's settings.json
 // npm run uninstall-hooks   takes them out again
-// The settings file is copied to data/backups before it is changed.
+// The settings file is copied to data/backups before it is changed. The
+// settings page does the same through src/hook-install.js.
 
-import fs from 'node:fs';
-import path from 'node:path';
 import { loadConfig } from '../src/config.js';
-import { addHooks, removeHooks } from '../src/hook-install.js';
+import { applyHooks } from '../src/hook-install.js';
 
 const action = process.argv[2];
 if (action !== 'install' && action !== 'uninstall') {
 	console.log('ใช้ได้สองแบบ: node bin/hooks.js install หรือ node bin/hooks.js uninstall');
 	process.exit(1);
 }
-
-const config = loadConfig();
-const file = path.join(config.claudeDir, 'settings.json');
-const before = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
-let settings = {};
-try { settings = before?.trim() ? JSON.parse(before) : {}; }
-catch (error) {
-	// Never overwrite a file we cannot read: it holds the person's other settings.
-	console.error(`อ่าน ${file} ไม่ได้ เพราะไม่ใช่ JSON ที่ถูกต้อง (${error.message}) จึงไม่แก้ไฟล์นี้`);
-	process.exit(1);
-}
-const after = JSON.stringify(action === 'install' ? addHooks(settings) : removeHooks(settings), null, 2) + '\n';
-
-if (before !== null && after.trim() === before.trim()) {
-	console.log(action === 'install' ? 'ติดตั้ง hook ไว้แล้ว ไม่ต้องแก้อะไร' : 'ไม่มี hook ของ Worklog ใน settings.json');
-	process.exit(0);
-}
-if (before !== null) {
-	const dir = path.join(config.dataDir, 'backups');
-	fs.mkdirSync(dir, { recursive: true });
-	const backup = path.join(dir, `settings-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
-	fs.writeFileSync(backup, before);
-	console.log(`สำรอง settings.json เดิมไว้ที่ ${backup}`);
-}
-// Through a temporary file, so Claude Code never reads a half-written settings file.
-fs.mkdirSync(path.dirname(file), { recursive: true });
-fs.writeFileSync(`${file}.worklog-tmp`, after);
-fs.renameSync(`${file}.worklog-tmp`, file);
-console.log(action === 'install'
-	? `ติดตั้ง hook ใน ${file} แล้ว มีผลกับ session ที่เปิดใหม่หลังจากนี้`
-	: `เอา hook ของ Worklog ออกจาก ${file} แล้ว`);
+const result = applyHooks(loadConfig(), action);
+(result.ok ? console.log : console.error)(result.message);
+process.exit(result.ok ? 0 : 1);

@@ -380,3 +380,23 @@ export function claudeStatus(config, { run = spawn, timeoutMs = 20000 } = {}) {
 		});
 	});
 }
+
+/**
+ * Starts `claude auth login` in a window of its own, which takes the person
+ * through signing in in their browser. Nothing has to be typed. Returns
+ * false when there is no claude CLI to start.
+ */
+export function claudeLogin(config, { run = spawn } = {}) {
+	const bin = resolveClaudeBin(config.summary.claudeBin);
+	try {
+		if (process.platform === 'win32') {
+			// start opens a console the person can see; its first quoted argument is the window title.
+			run('cmd', ['/c', `start "Worklog: เข้าสู่ระบบ Claude" "${bin}" auth login`], { windowsVerbatimArguments: true, detached: true, stdio: 'ignore' }).unref();
+		}
+		else run(bin, ['auth', 'login'], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
+		return true;
+	}
+	catch {
+		return false;
+	}
+}
