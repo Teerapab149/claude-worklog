@@ -2,3 +2,5 @@ node_modules/
 data/
 config.local.json
 PLAN.md
+.impeccable/review/
+.impeccable/questions/

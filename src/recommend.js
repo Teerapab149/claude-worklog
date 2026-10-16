@@ -189,6 +189,7 @@ export function recommend(items, accounts, now = Date.now()) {
 			reasons: reasons.filter(r => r.points > 0).sort((a, b) => b.points - a.points).map(r => r.text),
 			cautions: reasons.filter(r => r.points < 0).map(r => r.text),
 			headline: summary?.headline ?? null,
+			status: summary?.status ?? null,
 			next_step: next,
 			latest: { id: latest.id, title: latest.title, tool: latest.tool, account_uuid: latest.account_uuid, last_ts: latest.last_ts, end_state: latest.end_state },
 			account,

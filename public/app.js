@@ -1,16 +1,33 @@
 const app = document.getElementById('app');
 const scanMeta = document.getElementById('scan-meta');
 const rescanBtn = document.getElementById('rescan');
+const themeBtn = document.getElementById('theme');
 
 const TIMELINE_DAYS = 14;
 const END_STATE = {
-	replied: { label: 'AI ตอบแล้ว รอคุณ', tone: 'ok' },
-	rate_limited: { label: 'ติด limit', tone: 'warn' },
-	interrupted: { label: 'หยุดกลางคัน', tone: 'warn' },
-	no_reply: { label: 'ยังไม่มีคำตอบ', tone: 'muted' },
-	unknown: { label: 'ไม่ทราบสถานะ', tone: 'muted' },
+	replied: 'AI ตอบแล้ว รอคุณ',
+	rate_limited: 'ติด limit',
+	interrupted: 'หยุดกลางคัน',
+	no_reply: 'ยังไม่มีคำตอบ',
+	unknown: 'ไม่ทราบสถานะ',
 };
 const LIMIT_NAME = { five_hour: 'limit 5 ชั่วโมง', seven_day: 'limit รายสัปดาห์' };
+const STATUS = {
+	in_progress: { label: 'กำลังทำ', shape: 's-progress' },
+	blocked: { label: 'ติดปัญหา', shape: 's-blocked' },
+	waiting: { label: 'รออยู่', shape: 's-waiting' },
+	done: { label: 'เสร็จแล้ว', shape: 's-done' },
+	abandoned: { label: 'เลิกทำแล้ว', shape: 's-done' },
+};
+const PAUSE_TEXT = {
+	auth: 'สรุปด้วย AI ไม่ได้ เพราะ claude CLI ยังไม่ได้ login ให้เปิด Claude Code แล้วใช้คำสั่ง /login จากนั้นกดสรุปอีกครั้ง',
+	rate_limit: 'สรุปด้วย AI ไม่ได้ชั่วคราว เพราะบัญชีที่ claude CLI ใช้อยู่ติด limit ระบบจะลองใหม่เอง',
+	missing_cli: 'หาโปรแกรม claude ไม่เจอ ให้ติดตั้ง Claude Code CLI หรือตั้ง summary.claudeBin ใน config.local.json',
+};
+const ICON = {
+	back: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+	search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M20 20l-3.5-3.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>',
+};
 
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ESC[c]);
@@ -24,14 +41,8 @@ async function api(path, options) {
 // Time
 
 const toMs = ts => (typeof ts === 'number' ? ts : Date.parse(ts));
-
-function formatDateTime(ts) {
-	return new Date(toMs(ts)).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-}
-
-function formatTime(ts) {
-	return new Date(toMs(ts)).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
-}
+const formatDateTime = ts => new Date(toMs(ts)).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const formatTime = ts => new Date(toMs(ts)).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
 function spanText(ms) {
 	const minutes = Math.max(1, Math.round(ms / 60000));
@@ -50,72 +61,127 @@ function ago(ts) {
 	return `${spanText(diff)}ที่แล้ว`;
 }
 
+// Colours and shapes
+
+/** One of four paints, picked from a name so a project keeps its colour. */
+function paint(name) {
+	let h = 0;
+	for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+	return `p${h % 4}`;
+}
+
+function shape(status, { small = false, cls = '' } = {}) {
+	const s = STATUS[status]?.shape ?? 's-none';
+	const label = STATUS[status]?.label ?? 'ยังไม่มีสรุป';
+	return `<span class="shape ${s} ${small ? 'shape-sm' : ''} ${cls}" role="img" aria-label="${label}" title="${label}"></span>`;
+}
+
 // Accounts
 
 let accountIndex = new Map();
-
-function useAccounts(accounts) {
-	accountIndex = new Map(accounts.map(a => [a.uuid, a]));
-}
-
-/** Account name with its tool, so two tools never read alike. */
-function accountName(acct) {
-	return acct.tool === 'claude' && !/claude/i.test(acct.label) ? `Claude ${acct.label}` : acct.label;
-}
-
-function dotClass(uuid) {
-	const acct = accountIndex.get(uuid);
-	return acct ? `a${acct.color % 4}` : '';
-}
+const useAccounts = accounts => { accountIndex = new Map(accounts.map(a => [a.uuid, a])); };
+const accountName = acct => (acct.tool === 'claude' && !/claude/i.test(acct.label) ? `Claude ${acct.label}` : acct.label);
+const accountPaint = uuid => { const a = accountIndex.get(uuid); return a ? `p${a.color % 4}` : ''; };
 
 function accountChip(uuid, source) {
 	const acct = accountIndex.get(uuid);
-	if (!acct) return '<span class="chip"><span class="dot"></span>ไม่ทราบบัญชี</span>';
-	const guess = source === 'inferred'
-		? ' <span class="guess" title="log ไม่ได้บอกบัญชี จึงเดาจาก session อื่นในช่วงเวลาใกล้กัน">(เดา)</span>'
-		: '';
-	return `<span class="chip"><span class="dot ${dotClass(uuid)}"></span>${esc(accountName(acct))}${guess}</span>`;
+	if (!acct) return '<span class="acct-note"><span class="acct-dot"></span>ไม่ทราบบัญชี</span>';
+	const guess = source === 'inferred' ? ' <span class="guess" title="log ไม่ได้บอกบัญชี จึงเดาจาก session อื่นในช่วงเวลาใกล้กัน">(เดา)</span>' : '';
+	return `<span class="acct-note ${accountPaint(uuid)}"><span class="acct-dot"></span>${esc(accountName(acct))}${guess}</span>`;
 }
 
-function stateBadge(session) {
-	if (session.is_automated) return '<span class="badge muted">งานอัตโนมัติ</span>';
-	const state = END_STATE[session.end_state] ?? END_STATE.unknown;
-	return `<span class="badge ${state.tone}">${state.label}</span>`;
+/** A usage window's name, from its kind or its length in minutes. */
+function windowName(u) {
+	if (u.window === 'five_hour' || u.window_minutes === 300) return '5 ชั่วโมง';
+	if (u.window === 'seven_day' || u.window_minutes === 10080) return 'รายสัปดาห์';
+	if (u.window_minutes >= 1440 && u.window_minutes % 1440 === 0) return `${u.window_minutes / 1440} วัน`;
+	if (u.window_minutes) return `${Math.round(u.window_minutes / 60)} ชั่วโมง`;
+	return LIMIT_NAME[u.window] ?? 'limit';
 }
 
-function accountCard(acct) {
-	const status = acct.tool !== 'claude'
-		? 'log ของเครื่องมือนี้ไม่ได้บอกเรื่อง limit'
-		: acct.limited
-		? acct.limits.map(l => `ติด ${LIMIT_NAME[l.type] ?? 'limit'} ถึง ${formatDateTime(l.resets_at)} (อีก ${spanText(l.resets_at - Date.now())})`).join('<br>')
-		: 'ใช้งานได้';
-	return `<div class="card">
-		<div class="acct-name"><span class="dot ${dotClass(acct.uuid)}"></span>${esc(accountName(acct))}</div>
-		<div class="acct-status ${acct.tool !== 'claude' ? '' : acct.limited ? 'limited' : 'free'}">${status}</div>
-		<div class="acct-meta">${acct.sessions} session, ใช้ล่าสุด ${esc(ago(acct.last_ts))}</div>
+/**
+ * One tube per usage window, filled with what is left. The account's state
+ * reads from the emptiest tube; with no reading yet it falls back to what the
+ * log knows, which is only whether a request was refused.
+ */
+function usageOf(acct) {
+	const tubes = (acct.usage ?? [])
+		.map(u => ({ ...u, left: Math.max(0, Math.min(100, Math.round(100 - u.used_percent))) }))
+		.sort((a, b) => (a.window_minutes ?? 0) - (b.window_minutes ?? 0));
+	const empty = tubes.find(t => t.left === 0);
+	let state, text;
+	if (empty) {
+		state = 'waiting';
+		text = empty.resets_at ? `ว่างอีก ${spanText(empty.resets_at - Date.now())}` : 'ใช้หมดแล้ว';
+	}
+	else if (tubes.length) {
+		const least = Math.min(...tubes.map(t => t.left));
+		state = least < 20 ? 'low' : 'ready';
+		text = `เหลือ ${least}%`;
+	}
+	else if (acct.tool === 'claude') {
+		// Without a reading, the log only shows that no request was refused.
+		state = 'unknown';
+		text = 'ไม่ได้ติด limit';
+	}
+	else {
+		state = 'unknown';
+		text = 'ยังไม่มีตัวเลข';
+	}
+	return { tubes, state, text };
+}
+
+function tube(t) {
+	// An empty tube already says when it frees up in the account's state.
+	const reset = t.left === 0 ? ''
+		: t.resets_at ? `รีเซ็ตใน ${spanText(t.resets_at - Date.now())}`
+		: t.reset_seen ? `รีเซ็ตแล้วเมื่อ ${formatDateTime(t.reset_seen)} และยังไม่ได้ใช้จากเครื่องนี้` : '';
+	return `<div class="tube-row ${t.left === 0 ? 'is-empty' : t.left < 20 ? 'is-low' : ''}">
+		<div class="tube-head"><span>${esc(windowName(t))}</span><span class="tube-left">เหลือ ${t.left}%</span></div>
+		<div class="tube" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${t.left}" aria-label="${esc(`${windowName(t)} เหลือ ${t.left}%`)}">
+			<span class="tube-fill" data-w="${t.left}%" style="width:${animateBars ? '0%' : `${t.left}%`}"></span>
+		</div>
+		${reset ? `<p class="rod-meta">${esc(reset)}</p>` : ''}
 	</div>`;
 }
 
-// AI summaries
+function rod(acct, { detail = false } = {}) {
+	const u = usageOf(acct);
+	const none = u.tubes.length ? '' : `<p class="rod-meta">${detail
+		? (acct.tool === 'claude'
+			? 'ยังไม่มีตัวเลขเปอร์เซ็นต์ จะเริ่มเห็นหลังจากใช้ Claude Code ครั้งถัดไป ถ้าติดตั้ง status line ของ Worklog ไว้ ตอนนี้รู้แค่ว่าไม่ได้ติด limit'
+			: 'log ยังไม่ได้บอกว่าใช้ไปเท่าไหร่')
+		: 'ยังไม่มีตัวเลขเปอร์เซ็นต์'}</p>`;
+	return `<div class="rod ${accountPaint(acct.uuid)}">
+		<div class="rod-head"><span class="rod-name">${esc(accountName(acct))}</span><span class="rod-state ${u.state}">${esc(u.text)}</span></div>
+		${u.tubes.map(tube).join('')}${none}
+		${detail ? `<p class="rod-meta">${acct.sessions} session, ใช้ล่าสุด ${esc(ago(acct.last_ts))}</p>` : ''}
+	</div>`;
+}
 
-const SUMMARY_STATUS = {
-	done: { label: 'เสร็จแล้ว', tone: 'ok' },
-	in_progress: { label: 'ยังทำค้าง', tone: 'warn' },
-	blocked: { label: 'ติดปัญหา', tone: 'warn' },
-	waiting: { label: 'รออยู่', tone: 'muted' },
-	abandoned: { label: 'เลิกทำแล้ว', tone: 'muted' },
-};
-const PAUSE_TEXT = {
-	auth: 'สรุปด้วย AI ไม่ได้ เพราะ claude CLI ยังไม่ได้ login ให้เปิด terminal พิมพ์ claude แล้วใช้คำสั่ง /login จากนั้นกดสรุปอีกครั้ง',
-	rate_limit: 'สรุปด้วย AI ไม่ได้ชั่วคราว เพราะบัญชีที่ claude CLI ใช้อยู่ติด limit ระบบจะลองใหม่เอง',
-	missing_cli: 'หาโปรแกรม claude ไม่เจอ ให้ติดตั้ง Claude Code CLI หรือตั้ง summary.claudeBin ใน config.local.json',
-};
+let animateBars = false;
+function releaseBars() {
+	requestAnimationFrame(() => requestAnimationFrame(() => {
+		for (const f of app.querySelectorAll('.tube-fill[data-w]')) f.style.width = f.dataset.w;
+	}));
+}
+
+// Summaries
 
 let pollTimer = null;
+function pollWhileBusy(anyBusy) {
+	clearTimeout(pollTimer);
+	if (anyBusy) pollTimer = setTimeout(() => route({ quiet: true }), 3000);
+}
 
-function summaryPausedNote(summarizer) {
+function pausedNote(summarizer) {
 	if (!summarizer?.paused) return '';
-	return `<p class="note warn-note">${esc(PAUSE_TEXT[summarizer.paused.kind] ?? summarizer.paused.message)}</p>`;
+	return `<p class="paused">${esc(PAUSE_TEXT[summarizer.paused.kind] ?? summarizer.paused.message)}</p>`;
+}
+
+function workingNote(s) {
+	if (!s || s.paused || !(s.running || s.pending.length)) return '';
+	return `<p class="working"><span class="pulse"></span>กำลังสรุปด้วย AI อีก ${s.pending.length + (s.running ? 1 : 0)} รายการ</p>`;
 }
 
 function listBlock(title, items) {
@@ -132,89 +198,33 @@ function deadlineBlock(deadlines) {
 	return `<div class="sum-block"><h3>กำหนดส่ง</h3><ul>${items.join('')}</ul></div>`;
 }
 
-/** Summary card with a button to refresh. kind is 'session' or 'project'. */
-function summaryCard(summary, kind, ref, summarizer) {
-	// A paused queue keeps its items, but the person should be able to retry.
+function summaryBody(summary, kind, ref, summarizer) {
 	const busy = summary?.busy && !summarizer?.paused;
 	const data = summary?.data;
-	const button = `<button class="btn btn-small" type="button" data-summarize="${kind}" data-ref="${esc(ref)}" ${busy ? 'disabled' : ''}>
-		${busy ? 'กำลังสรุป' : data ? 'สรุปใหม่' : 'สรุปด้วย AI'}</button>`;
-	let meta = '';
-	if (data) {
-		meta = `สรุปเมื่อ ${esc(ago(summary.created_at))}${summary.stale ? ', มีข้อความใหม่หลังจากนั้น' : ''}`;
-	}
-	else if (summary?.error && !busy) {
-		meta = `<span class="error">สรุปไม่สำเร็จ ${esc(ago(summary.error_at))}</span>`;
-	}
-	else if (!busy) {
-		meta = kind === 'project' ? 'ยังไม่มีสรุปของโปรเจคนี้' : 'ยังไม่มีสรุปของ session นี้';
-	}
-
-	const body = data ? `
-		<p class="headline">${SUMMARY_STATUS[data.status] ? `<span class="badge ${SUMMARY_STATUS[data.status].tone}">${SUMMARY_STATUS[data.status].label}</span> ` : ''}${esc(data.headline)}</p>
-		<div class="sum-grid">
-			${listBlock('ขั้นต่อไป', data.next_steps)}
-			${listBlock('ค้างอยู่', data.in_progress)}
-			${listBlock('รออยู่', data.waiting_on)}
-			${deadlineBlock(data.deadlines)}
-			${listBlock('ทำเสร็จแล้ว', data.done)}
-		</div>` : busy ? '<div class="skeleton slim"></div>' : '';
-
-	return `<div class="card summary ${summary?.stale ? 'stale' : ''}">
-		<div class="sum-head"><span class="sum-meta">${meta}</span>${button}</div>
-		${body}
-		${summaryPausedNote(summarizer)}
+	const button = `<button class="btn-copy" type="button" data-summarize="${kind}" data-ref="${esc(ref)}" ${busy ? 'disabled' : ''}>${busy ? 'กำลังสรุป' : data ? 'สรุปใหม่' : 'สรุปด้วย AI'}</button>`;
+	let meta;
+	if (data) meta = `สรุปเมื่อ ${esc(ago(summary.created_at))}${summary.stale ? ' มีข้อความใหม่หลังจากนั้น' : ''}`;
+	else if (summary?.error && !busy) meta = `สรุปไม่สำเร็จ ${esc(ago(summary.error_at))}`;
+	else if (busy) meta = 'กำลังสรุป';
+	else meta = kind === 'project' ? 'ยังไม่มีสรุปของโปรเจคนี้' : 'ยังไม่มีสรุปของ session นี้';
+	return `<div class="summary">
+		<div class="summary-head"><span class="summary-meta">${meta}</span>${button}</div>
+		${data ? `<p class="headline">${shape(data.status)}<span>${esc(data.headline)}</span></p>
+			<div class="sum-grid">
+				${listBlock('ขั้นต่อไป', data.next_steps)}
+				${listBlock('ยังค้างอยู่', data.in_progress)}
+				${listBlock('เรื่องที่รออยู่', data.waiting_on)}
+				${deadlineBlock(data.deadlines)}
+				${listBlock('ทำเสร็จแล้ว', data.done)}
+			</div>` : ''}
+		${pausedNote(summarizer)}
 	</div>`;
 }
 
-/** Re-renders while any summary on the page is being made. */
-function pollWhileBusy(anyBusy) {
-	clearTimeout(pollTimer);
-	if (anyBusy) pollTimer = setTimeout(() => route({ quiet: true }), 3000);
-}
+// Pieces shared by several pages
 
-// Pages
-
-function loading() {
-	app.innerHTML = '<div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>';
-}
-
-function failed(error) {
-	const text = error.status === 404 ? 'ไม่พบข้อมูลนี้ อาจถูกลบไปแล้ว' : 'โหลดข้อมูลไม่สำเร็จ ลองกดสแกนใหม่หรือรีเฟรชหน้า';
-	app.innerHTML = `<a class="back" href="#/">ทุกโปรเจค</a><p class="error">${text}</p>`;
-}
-
-function showScan(scan) {
-	if (!scan) return;
-	scanMeta.textContent = scan.error ? 'สแกนล่าสุดมีปัญหา' : `สแกนล่าสุด ${formatTime(scan.at)}`;
-}
-
-function activeRow(s) {
-	const href = s.project_key ? `#/s/${encodeURIComponent(s.id)}` : null;
-	const tag = href ? 'a' : 'div';
-	return `<${tag} class="row" ${href ? `href="${href}"` : ''}>
-		<div class="row-title">${esc(s.project_name ?? 'ไม่ทราบโปรเจค')}</div>
-		<div class="row-side"><span class="live ${s.status === 'busy' ? '' : 'idle'}">${s.status === 'busy' ? 'กำลังทำงาน' : 'เปิดค้างไว้'}</span></div>
-		<div class="row-sub">${esc(s.title ?? '')} ${accountChip(s.account_uuid, s.account_source)}</div>
-	</${tag}>`;
-}
-
-function projectRow(p) {
-	const latest = p.latest;
-	const dots = p.accounts.map(uuid => `<span class="dot ${dotClass(uuid)}" title="${esc(accountIndex.has(uuid) ? accountName(accountIndex.get(uuid)) : '')}"></span>`).join('');
-	const prompt = latest?.last_human_text ?? latest?.last_prompt;
-	const sum = p.summary?.data;
-	const next = sum?.next_steps?.[0];
-	const snippet = sum
-		? `<div class="snippet">${esc(sum.headline)}${next ? `<br><b>ขั้นต่อไป</b> ${esc(next)}` : ''}</div>`
-		: prompt ? `<div class="snippet"><b>สั่งล่าสุด</b> ${esc(prompt)}</div>` : '';
-	return `<a class="row" href="#/p/${encodeURIComponent(p.key)}">
-		<div class="row-title">${esc(p.name)} <span class="dots">${dots}</span>${sum && SUMMARY_STATUS[sum.status] ? ` <span class="badge ${SUMMARY_STATUS[sum.status].tone}">${SUMMARY_STATUS[sum.status].label}</span>` : ''}</div>
-		<div class="row-side"><span class="when">${esc(ago(p.last_ts))}</span><br>${p.sessions} session</div>
-		${latest ? `<div class="row-sub">${esc(latest.title)} ${stateBadge(latest)} ${accountChip(latest.account_uuid, latest.account_source)}</div>` : ''}
-		${snippet}
-	</a>`;
-}
+const box = (tag, body, { cls = '', tagCls = '' } = {}) => `<section class="box ${cls}"><h2 class="tag ${tagCls}">${tag}</h2>${body}</section>`;
+const backLink = (href, text) => `<a class="back" href="${href}">${ICON.back}${esc(text)}</a>`;
 
 /**
  * How to pick the work back up. A session opened in the desktop app is
@@ -222,202 +232,307 @@ function projectRow(p) {
  * Both get a prompt for starting fresh, which leads when the account changed.
  */
 function continueBlock(c, { switched = false } = {}) {
-	if (!c) return '';
+	if (!c) return '<p class="empty">ไม่มีข้อมูลพอจะบอกวิธีทำต่อ</p>';
 	const folder = c.cwd ? ` ในโฟลเดอร์ <span class="mono">${esc(c.cwd)}</span>` : '';
-	const promptRow = lead => `<div class="how-row">
-		<p>${lead}</p>
-		<button class="btn btn-small" type="button" data-copy="${esc(c.prompt)}">คัดลอก prompt</button>
-	</div>`;
-	const fresh = switched
-		? promptRow(`บัญชีเปลี่ยนจากครั้งก่อน ให้เปิด session ใหม่${folder} แล้ววาง prompt นี้`)
-		: promptRow(`หรือเปิด session ใหม่${folder} แล้ววาง prompt นี้`);
+	const fresh = `<div class="how-row"><p>${switched ? 'บัญชีเปลี่ยนจากครั้งก่อน ให้เปิด session ใหม่' : 'หรือเปิด session ใหม่'}${folder} แล้ววาง prompt นี้</p>
+		<button class="btn-copy" type="button" data-copy="${esc(c.prompt)}">คัดลอก prompt</button></div>`;
 	const old = c.via === 'app'
 		? `<p class="how-old">${switched ? 'ถ้ายังเปิด session เดิมได้ ให้หา session ชื่อ' : 'เปิด session ชื่อ'} <b>"${esc(c.title)}"</b> จากแถบด้านซ้ายของแอป ${esc(c.app)}</p>`
-		: `<div class="cmd"><code>${esc(c.command)}</code><button class="btn btn-small" type="button" data-copy="${esc(c.command)}">คัดลอก</button></div>`;
-	return `<div class="how">
-		${switched ? fresh + old : old + fresh}
-		<details class="prompt-preview"><summary>ดู prompt</summary><div class="quote">${esc(c.prompt)}</div></details>
-	</div>`;
+		: `<div class="cmd"><code>${esc(c.command)}</code><button class="btn-copy" type="button" data-copy="${esc(c.command)}">คัดลอก</button></div>`;
+	return `<div class="how">${switched ? fresh + old : old + fresh}
+		<details class="prompt-preview"><summary>ดู prompt</summary><div class="quote">${esc(c.prompt)}</div></details></div>`;
 }
 
-function nextCard(item, rank) {
+function liveList(active) {
+	if (!active.length) return '<p class="empty">ไม่มี session เปิดอยู่</p>';
+	return `<div class="live-list">${active.map(s => {
+		const inner = `<span class="pulse ${s.status === 'busy' ? '' : 'idle'}"></span>
+			<span class="row-main"><span class="row-title">${esc(s.project_name ?? 'ไม่ทราบโปรเจค')}</span><span class="row-sub">${esc(s.title ?? '')}</span></span>
+			<span class="row-side">${s.status === 'busy' ? 'กำลังทำงาน' : 'เปิดค้างไว้'}</span>`;
+		return s.project_key ? `<a class="live" href="#/s/${encodeURIComponent(s.id)}">${inner}</a>` : `<div class="live">${inner}</div>`;
+	}).join('')}</div>`;
+}
+
+function overlapList(o) {
+	const together = o.openTogether.map(g => `<a class="warn" href="#/p/${encodeURIComponent(g.project_key)}">
+		<span class="warn-title">${shape('blocked', { small: true, cls: 'p3' })}${esc(g.project_name)} เปิดอยู่ ${g.sessions.length} session พร้อมกัน</span>
+		<span class="row-sub">${g.strong ? 'เปิดจากคนละบัญชี อีกฝั่งอาจไม่รู้ว่าทำอะไรไปแล้ว' : g.sessions.map(s => esc(s.title ?? s.id.slice(0, 8))).join(', ')}</span></a>`);
+	const files = o.files.map(f => `<a class="warn" href="#/s/${encodeURIComponent(f.sessions[0].id)}">
+		<span class="warn-title">${shape('blocked', { small: true, cls: 'p3' })}<span class="file-path">${esc(f.path.replace(/\\/g, '/').split('/').slice(-2).join('/'))}</span></span>
+		<span class="row-sub">${f.strong ? 'คนละบัญชีแก้ไฟล์นี้' : 'สอง session แก้ไฟล์นี้'} ห่างกันไม่เกิน ${o.windowMinutes} นาที ล่าสุด ${esc(ago(f.last_ts))}</span></a>`);
+	return `<div class="warn-list">${[...together, ...files].join('')}</div>`;
+}
+
+const hasOverlap = o => o && (o.openTogether.length || o.files.length);
+
+function loading(kind = 'cols') {
+	app.innerHTML = kind === 'cols'
+		? '<div class="page"><div class="page-cols"><div class="stack"><div class="skeleton tall"></div><div class="skeleton"></div></div><div class="stack"><div class="skeleton"></div><div class="skeleton"></div></div></div></div>'
+		: '<div class="page"><div class="skeleton"></div><div class="skeleton tall"></div></div>';
+}
+
+function failed(error) {
+	const text = error.status === 404 ? 'ไม่พบข้อมูลนี้ อาจถูกลบไปแล้ว' : 'โหลดข้อมูลไม่สำเร็จ ลองกด อ่าน log ใหม่ หรือเปิดหน้านี้อีกครั้ง';
+	app.innerHTML = `<div class="page"><div class="error-box"><p>${text}</p><a class="back" href="#/">${ICON.back}กลับไปหน้าวันนี้</a></div></div>`;
+}
+
+function showScan(scan) {
+	if (!scan) return;
+	scanMeta.textContent = scan.error ? 'อ่าน log ล่าสุดมีปัญหา' : `อ่าน log ล่าสุดเมื่อ ${formatTime(scan.at)}`;
+}
+
+// Today
+
+function block(item) {
 	const p = item.project;
-	const reasons = item.reasons.map(r => `<li>${esc(r)}</li>`).join('')
-		+ item.cautions.map(c => `<li class="caution">${esc(c)}</li>`).join('');
-	return `<div class="card next">
-		<div class="next-head">
-			<span class="rank">${rank}</span>
-			<a class="next-name" href="#/p/${encodeURIComponent(p.key)}">${esc(p.name)}</a>
-			<a class="next-session" href="#/s/${encodeURIComponent(item.latest.id)}">${esc(item.latest.title)}</a>
+	// A deadline reason reads "กำหนด <date> (<when>) <what>"; the chip keeps the date part.
+	const brief = r => r.match(/^(กำหนด [^)]*\))/)?.[1] ?? r;
+	const reasons = item.reasons.slice(0, 1).map(r => `<span class="chip hot" title="${esc(r)}"><span class="clamp">${esc(brief(r))}</span></span>`)
+		.concat(item.cautions.slice(0, 1).map(c => `<span class="chip quiet"><span class="clamp">${esc(c)}</span></span>`)).join('');
+	return `<article class="block ${paint(p.name)}">
+		<div class="block-band"></div>
+		<div class="block-body">
+			<div class="block-title">${shape(item.status)}<h3 title="${esc(p.name)}"><a href="#/p/${encodeURIComponent(p.key)}">${esc(p.name)}</a></h3></div>
+			${item.headline ? `<p class="block-lede">${esc(item.headline)}</p>` : `<p class="block-lede">${esc(item.latest.title)}</p>`}
+			${item.next_step ? `<p class="next-step"><b>เริ่มจาก</b><span class="clamp">${esc(item.next_step)}</span></p>` : ''}
+			<div class="chips">${reasons}</div>
+			<div class="block-foot">
+				<span class="acct-note ${accountPaint(item.account.uuid)}"><span class="acct-dot"></span>${esc(item.account.note)}</span>
+				<details class="go"><summary class="btn-go">ทำต่อ</summary>
+					<div class="go-panel">${continueBlock(item.continue, { switched: item.switched })}</div></details>
+			</div>
 		</div>
-		${item.headline ? `<p class="next-headline">${esc(item.headline)}</p>` : ''}
-		${item.next_step ? `<p class="next-step"><b>เริ่มจาก</b> ${esc(item.next_step)}</p>` : ''}
-		<ul class="reasons">${reasons}</ul>
-		<div class="next-foot">
-			<p class="next-account"><span class="dot ${dotClass(item.account.uuid)}"></span>${esc(item.account.note)}</p>
-			${continueBlock(item.continue, { switched: item.switched })}
-		</div>
-	</div>`;
+	</article>`;
 }
 
-function nextSection(next) {
-	if (!next?.length) return '';
-	const top = next.slice(0, 3), rest = next.slice(3);
-	return `<section>
-		<h2>ทำอะไรต่อดี</h2>
-		<div class="next-list">${top.map((item, i) => nextCard(item, i + 1)).join('')}</div>
-		${rest.length ? `<details class="more"><summary>งานอื่นที่ยังค้างอีก ${rest.length} โปรเจค</summary>
-			<div class="list">${rest.map(item => `<a class="row" href="#/p/${encodeURIComponent(item.project.key)}">
-				<div class="row-title">${esc(item.project.name)}</div>
-				<div class="row-side">${esc(ago(item.latest.last_ts))}</div>
-				<div class="snippet">${esc(item.reasons[0] ?? '')}</div>
-			</a>`).join('')}</div>
-		</details>` : ''}
-	</section>`;
+function mini(item) {
+	return `<a class="mini ${paint(item.project.name)}" href="#/p/${encodeURIComponent(item.project.key)}">
+		<span class="mini-title">${shape(item.status, { small: true })}${esc(item.project.name)}</span>
+		<span class="mini-sub">${esc(item.reasons[0] ?? item.cautions[0] ?? ago(item.latest.last_ts))}</span></a>`;
 }
 
-function overlapSection(o) {
-	if (!o || (!o.openTogether.length && !o.files.length)) return '';
-	const together = o.openTogether.map(g => `<a class="row" href="#/p/${encodeURIComponent(g.project_key)}">
-		<div class="row-title">${esc(g.project_name)} เปิดอยู่ ${g.sessions.length} session พร้อมกัน</div>
-		<div class="row-side">${g.strong ? '<span class="badge warn">คนละบัญชี</span>' : '<span class="badge muted">แจ้งให้รู้</span>'}</div>
-		<div class="snippet">${g.sessions.map(s => `${accountChip(s.account_uuid)} ${esc(s.title ?? s.id.slice(0, 8))}`).join('<br>')}</div>
-	</a>`);
-	const files = o.files.map(f => `<a class="row" href="#/s/${encodeURIComponent(f.sessions[0].id)}">
-		<div class="row-title file-path">${esc(relativePath(f.path, ''))}</div>
-		<div class="row-side"><span class="badge warn">${f.strong ? 'คนละบัญชีแก้ไฟล์เดียวกัน' : 'แก้ไฟล์เดียวกัน'}</span></div>
-		<div class="snippet">${f.sessions.map(s => `${accountChip(s.account_uuid)} ${esc(s.title ?? s.id.slice(0, 8))}, ${esc(ago(s.ts))}`).join('<br>')}</div>
-	</a>`);
-	return `<section>
-		<h2>งานทับซ้อน</h2>
-		<p class="note">session ที่แก้ไฟล์เดียวกันห่างกันไม่เกิน ${o.windowMinutes} นาทีใน 24 ชั่วโมงที่ผ่านมา และโปรเจคที่เปิดหลาย session พร้อมกัน</p>
-		<div class="list">${[...together, ...files].join('')}</div>
-	</section>`;
-}
-
-async function renderHome() {
+async function renderToday() {
 	const data = await api('/api/overview');
 	useAccounts(data.accounts);
 	showScan(data.scan);
 	const s = data.summarizer;
-	const working = s && (s.running || s.pending.length);
-	pollWhileBusy(working && !s.paused);
-	app.innerHTML = `
-		<div class="page-head">
-			<h1>กลับมาทำงานต่อ</h1>
-			<p>ทุกโปรเจคที่ทำกับ Claude Code และ Codex เรียงตามเวลาที่ทำล่าสุด</p>
-			${working && !s.paused ? `<p class="note">กำลังสรุปด้วย AI เหลืออีก ${s.pending.length + (s.running ? 1 : 0)} รายการ</p>` : ''}
-			${summaryPausedNote(s)}
+	pollWhileBusy(s && !s.paused && (s.running || s.pending.length));
+	const top = data.next.slice(0, 3), rest = data.next.slice(3);
+	app.innerHTML = `<div class="page"><div class="page-cols">
+		<div class="stack">
+			<header class="page-head"><h1>วันนี้ทำอะไรต่อดี</h1>
+				<p>${top.length ? `${top.length === 1 ? 'งานที่ควร' : `${top.length} งานที่ควร`}หยิบก่อน เรียงจากเรื่องที่รีบที่สุด` : 'ยังไม่มีงานที่ค้างอยู่'}</p>
+				${workingNote(s)}${pausedNote(s)}</header>
+			${box('ทำต่อ', top.length ? `<div class="blocks">${top.map(block).join('')}</div>`
+				: '<p class="empty">ไม่มีงานค้าง เมื่อเปิด Claude Code หรือ Codex ทำงาน งานจะขึ้นที่นี่</p>')}
+			${rest.length ? box('ยังค้างอยู่อีก', `<div class="minis">${rest.map(mini).join('')}</div>`) : ''}
 		</div>
-		${overlapSection(data.overlaps)}
-		${nextSection(data.next)}
-		<section>
-			<h2>เครื่องมือและบัญชี</h2>
-			<div class="accounts">${data.accounts.map(accountCard).join('')}</div>
-		</section>
-		${data.active.length ? `<section>
-			<h2>เปิดอยู่ตอนนี้</h2>
-			<div class="list">${data.active.map(activeRow).join('')}</div>
-		</section>` : ''}
-		<section>
-			<h2>โปรเจค</h2>
-			<div class="list">${data.projects.map(projectRow).join('') || '<div class="empty">ยังไม่พบ session ใน log ลองเปิด Claude Code ทำงานสักครั้ง แล้วกดสแกนใหม่</div>'}</div>
-		</section>`;
+		<div class="stack">
+			${box('บัญชี', `<div class="rods">${data.accounts.map(a => rod(a)).join('')}</div>`)}
+			${box('เปิดอยู่ตอนนี้', liveList(data.active))}
+			${hasOverlap(data.overlaps) ? box('งานทับซ้อน', overlapList(data.overlaps), { tagCls: 'tag-alert' }) : ''}
+		</div>
+	</div></div>`;
 }
+
+// Projects
+
+let projectQuery = '';
+const GROUPS = [
+	['in_progress', 'กำลังทำ'],
+	['blocked', 'ติดปัญหา'],
+	['waiting', 'รออยู่'],
+	[null, 'ยังไม่มีสรุป'],
+	['finished', 'เสร็จหรือเลิกทำแล้ว'],
+];
+const groupOf = p => {
+	const st = p.summary?.data?.status;
+	if (st === 'done' || st === 'abandoned') return 'finished';
+	return STATUS[st] ? st : null;
+};
+
+function projectRow(p) {
+	const sum = p.summary?.data;
+	const sub = sum?.next_steps?.[0] ? `เริ่มจาก ${sum.next_steps[0]}` : sum?.headline ?? p.latest?.last_human_text ?? p.latest?.title ?? '';
+	const dots = p.accounts.map(uuid => `<span class="acct-dot ${accountPaint(uuid)}" title="${esc(accountIndex.has(uuid) ? accountName(accountIndex.get(uuid)) : '')}"></span>`).join('');
+	const st = sum?.status;
+	return `<a class="row ${paint(p.name)}" href="#/p/${encodeURIComponent(p.key)}" data-find="${esc(`${p.name} ${sum?.headline ?? ''}`.toLowerCase())}">
+		${shape(st)}
+		<span class="row-main"><span class="row-title">${esc(p.name)}</span><span class="row-sub">${esc(sub)}</span></span>
+		<span class="row-side">${st === 'done' || st === 'abandoned' ? `<span class="stamp ${st === 'abandoned' ? 'gone' : ''}">${STATUS[st].label}</span><br>` : ''}${esc(ago(p.last_ts))}<br><span class="dots">${dots}</span> ${p.sessions} session</span>
+	</a>`;
+}
+
+function filterProjects() {
+	const q = projectQuery.trim().toLowerCase();
+	for (const row of app.querySelectorAll('[data-find]')) row.hidden = Boolean(q) && !row.dataset.find.includes(q);
+	for (const g of app.querySelectorAll('[data-group]')) {
+		const shown = g.querySelectorAll('[data-find]:not([hidden])').length;
+		g.hidden = shown === 0;
+		g.querySelector('.count').textContent = shown;
+		if (q && g.tagName === 'DETAILS') g.open = true;
+	}
+	const none = app.querySelector('#no-match');
+	if (none) none.hidden = Boolean(app.querySelector('[data-find]:not([hidden])'));
+}
+
+async function renderProjects() {
+	const data = await api('/api/overview');
+	useAccounts(data.accounts);
+	showScan(data.scan);
+	const groups = GROUPS.map(([key, label]) => [key, label, data.projects.filter(p => groupOf(p) === key)]).filter(g => g[2].length);
+	app.innerHTML = `<div class="page">
+		<header class="page-head"><h1>โปรเจค</h1><p>${data.projects.length} โปรเจค แบ่งตามสถานะจากสรุปล่าสุด</p></header>
+		${box('ทั้งหมด', `<div class="box-head"><label class="search">${ICON.search}<input type="search" id="find" placeholder="ค้นหาชื่อโปรเจค" value="${esc(projectQuery)}" aria-label="ค้นหาโปรเจค"></label></div>
+			${groups.map(([key, label, list]) => {
+				const head = `<div class="group-head">${shape(key === 'finished' ? 'done' : key, { small: true })}<h2>${label}</h2><span class="count">${list.length}</span></div>`;
+				const rows = `<div class="rows">${list.map(projectRow).join('')}</div>`;
+				return key === 'finished'
+					? `<details class="group" data-group><summary>${head}</summary>${rows}</details>`
+					: `<div class="group" data-group>${head}${rows}</div>`;
+			}).join('') || '<p class="empty">ยังไม่พบ session ใน log ลองเปิด Claude Code ทำงานสักครั้ง แล้วกด อ่าน log ใหม่</p>'}
+			<p class="empty" id="no-match" hidden>ไม่มีโปรเจคที่ตรงกับคำค้นนี้</p>`)}
+	</div>`;
+	const find = app.querySelector('#find');
+	find?.addEventListener('input', () => { projectQuery = find.value; filterProjects(); });
+	filterProjects();
+}
+
+// Accounts
+
+async function renderAccounts() {
+	const data = await api('/api/overview');
+	useAccounts(data.accounts);
+	showScan(data.scan);
+	app.innerHTML = `<div class="page"><div class="page-cols">
+		<div class="stack">
+			<header class="page-head"><h1>บัญชี</h1><p>บัญชีไหนใช้ได้ บัญชีไหนติด limit ถึงเมื่อไหร่</p></header>
+			${box('เครื่องมือและบัญชี', `<div class="rods">${data.accounts.map(a => rod(a, { detail: true })).join('') || '<p class="empty">ยังไม่พบบัญชีใน log</p>'}</div>`)}
+		</div>
+		<div class="stack">
+			${box('เปิดอยู่ตอนนี้', liveList(data.active))}
+			${box('งานทับซ้อน', hasOverlap(data.overlaps) ? overlapList(data.overlaps) : '<p class="empty">ไม่มีงานทับซ้อนใน 24 ชั่วโมงที่ผ่านมา</p>', { tagCls: hasOverlap(data.overlaps) ? 'tag-alert' : '' })}
+		</div>
+	</div></div>`;
+}
+
+// Settings
+
+async function renderSettings() {
+	const { scan, settings: st } = await api('/api/settings');
+	showScan(scan);
+	const fact = (k, v) => `<div class="fact"><dt>${k}</dt><dd>${v}</dd></div>`;
+	const on = (yes, a, b) => `<span class="pill ${yes ? 'on' : 'off'}">${yes ? a : b}</span>`;
+	app.innerHTML = `<div class="page">
+		<header class="page-head"><h1>ตั้งค่า</h1><p>สิ่งที่ตั้งไว้ตอนนี้ หน้าที่แก้ค่าได้ในแอปกำลังจะตามมา ระหว่างนี้แก้ได้ที่ไฟล์ config.local.json</p></header>
+		${box('โปรเจคและบัญชี', `<dl class="facts">
+			${fact('โฟลเดอร์ที่เก็บโปรเจค', st.roots.length ? st.roots.map(r => `<span class="mono">${esc(r)}</span>`).join('<br>') : 'ยังไม่ได้ตั้ง แต่ละ session จะจัดกลุ่มตามโฟลเดอร์ของตัวเอง')}
+			${fact('โฟลเดอร์ที่ไม่นับ', st.exclude.length ? st.exclude.map(r => `<span class="mono">${esc(r)}</span>`).join('<br>') : 'ไม่มี')}
+			${fact('บัญชี', st.accounts.map(a => `${esc(a.label)} <span class="guess">(${a.sessions} session)</span>`).join('<br>') || 'ยังไม่พบ')}
+		</dl>`)}
+		${box('การทำงาน', `<dl class="facts">
+			${fact('สรุปด้วย AI', `${on(st.summary.enabled, 'เปิดอยู่', 'ปิดอยู่')} ใช้โมเดล ${esc(st.summary.model)} สรุปเองเฉพาะงานใน ${st.summary.autoDays} วันล่าสุด`)}
+			${fact('hook เตือนงานทับซ้อน', `${on(st.hooksInstalled > 0, 'ติดตั้งแล้ว', 'ยังไม่ได้ติดตั้ง')} นับว่าทับกันเมื่อแก้ไฟล์เดียวกันห่างกันไม่เกิน ${st.overlap.windowMinutes} นาที`)}
+			${fact('ข้อมูลของ Claude Code', `<span class="mono">${esc(st.sources.claude)}</span>`)}
+			${fact('ข้อมูลของ Codex', `<span class="mono">${esc(st.sources.codex)}</span>`)}
+			${fact('ที่เก็บข้อมูลของ Worklog', `<span class="mono">${esc(st.dataDir)}</span>`)}
+		</dl>`)}
+	</div>`;
+}
+
+// Project and session detail
 
 function timeline(sessions) {
 	const end = Date.now();
-	const start = end - TIMELINE_DAYS * 86400000;
+	const DAY = 86400000;
+	const inRange = sessions.filter(s => s.last_ts && toMs(s.last_ts) >= end - TIMELINE_DAYS * DAY);
+	if (!inRange.length) return `<p class="empty">ไม่มี session ใน ${TIMELINE_DAYS} วันที่ผ่านมา</p>`;
+	const earliest = Math.min(...inRange.map(s => toMs(s.first_ts ?? s.last_ts)));
+	const days = Math.min(TIMELINE_DAYS, Math.max(3, Math.ceil((end - earliest) / DAY) + 1));
+	const start = end - days * DAY;
 	const range = end - start;
-	const inRange = sessions.filter(s => s.last_ts && toMs(s.last_ts) >= start);
-	if (!inRange.length) return `<div class="empty">ไม่มี session ใน ${TIMELINE_DAYS} วันที่ผ่านมา</div>`;
-
-	const laneKeys = [...new Set(inRange.map(s => (s.is_automated ? 'auto' : s.account_uuid ?? 'none')))];
-	laneKeys.sort((a, b) => (accountIndex.get(a)?.color ?? 9) - (accountIndex.get(b)?.color ?? 9));
+	const laneOf = s => (s.is_automated ? 'auto' : s.account_uuid ?? 'none');
+	const laneKeys = [...new Set(inRange.map(laneOf))].sort((a, b) => (accountIndex.get(a)?.color ?? 9) - (accountIndex.get(b)?.color ?? 9));
 	const laneLabel = key => {
-		if (key === 'auto') return '<span class="dot"></span>งานอัตโนมัติ';
+		if (key === 'auto') return '<span class="acct-dot"></span>งานอัตโนมัติ';
 		const acct = accountIndex.get(key);
-		return acct ? `<span class="dot ${dotClass(key)}"></span>${esc(accountName(acct))}` : '<span class="dot"></span>ไม่ทราบบัญชี';
+		return acct ? `<span class="acct-dot ${accountPaint(key)}"></span>${esc(accountName(acct))}` : '<span class="acct-dot"></span>ไม่ทราบบัญชี';
 	};
 	const lanes = laneKeys.map(key => {
-		const segs = inRange.filter(s => (s.is_automated ? 'auto' : s.account_uuid ?? 'none') === key).map(s => {
-			const from = Math.max(toMs(s.first_ts), start);
+		let lane = inRange.filter(s => laneOf(s) === key)
+			.map(s => ({ s, from: Math.max(toMs(s.first_ts), start), to: toMs(s.last_ts), runs: 1 }));
+		// Automated runs come in bursts; ones closer than a segment is wide read as one piece.
+		if (key === 'auto') {
+			// Wide enough to cover the 14px minimum width of a segment on a typical track.
+			const touch = range * 0.03;
+			lane = lane.sort((a, b) => a.from - b.from).reduce((out, seg) => {
+				const last = out.at(-1);
+				if (last && seg.from <= last.to + touch) { last.to = Math.max(last.to, seg.to); last.runs += 1; }
+				else out.push({ ...seg });
+				return out;
+			}, []);
+		}
+		const segs = lane.map(({ s, from, to, runs }) => {
 			const left = ((from - start) / range) * 100;
-			const width = Math.max(((toMs(s.last_ts) - from) / range) * 100, 0.4);
-			const tip = `${s.title} (${formatDateTime(s.first_ts)} ถึง ${formatTime(s.last_ts)})`;
-			return `<a class="seg ${dotClass(s.account_uuid)} ${s.is_automated ? 'auto' : ''}" href="#/s/${encodeURIComponent(s.id)}"
-				style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%" title="${esc(tip)}" aria-label="${esc(tip)}"></a>`;
+			const width = Math.max(((to - from) / range) * 100, 0.6);
+			const tip = runs > 1
+				? `งานอัตโนมัติ ${runs} ครั้ง (${formatDateTime(from)} ถึง ${formatTime(to)})`
+				: `${s.title} (${formatDateTime(s.first_ts)} ถึง ${formatTime(s.last_ts)})`;
+			return `<a class="seg ${accountPaint(s.account_uuid)} ${s.is_automated ? 'auto' : ''}" href="#/s/${encodeURIComponent(s.id)}" style="left:${left.toFixed(2)}%;width:${width.toFixed(2)}%" title="${esc(tip)}" aria-label="${esc(tip)}"></a>`;
 		}).join('');
 		return `<div class="lane"><div class="lane-label">${laneLabel(key)}</div><div class="track">${segs}</div></div>`;
 	}).join('');
-
 	const ticks = [];
-	for (let d = TIMELINE_DAYS; d >= 0; d -= 2) {
-		const t = end - d * 86400000;
-		const label = d === 0 ? 'วันนี้' : new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
-		ticks.push(`<span style="left:${(((t - start) / range) * 100).toFixed(2)}%">${label}</span>`);
+	for (let d = days; d >= 0; d -= days > 7 ? 2 : 1) {
+		const t = end - d * DAY;
+		ticks.push(`<span style="left:${(((t - start) / range) * 100).toFixed(2)}%">${d === 0 ? 'วันนี้' : new Date(t).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span>`);
 	}
 	return `${lanes}<div class="ticks"><span></span><div class="ticks-inner">${ticks.join('')}</div></div>`;
 }
 
-function relativePath(file, base) {
-	const norm = p => p.replace(/\\/g, '/');
-	const f = norm(file), b = norm(base ?? '');
-	return b && f.toLowerCase().startsWith(b.toLowerCase() + '/') ? f.slice(b.length + 1) : f;
+/** A path inside the project shows from the project folder; one outside shows its last two parts. */
+function shortPath(file, base) {
+	const f = file.replace(/\\/g, '/'), b = (base ?? '').replace(/\\/g, '/');
+	if (b && f.toLowerCase().startsWith(b.toLowerCase() + '/')) return f.slice(b.length + 1);
+	return f.split('/').slice(-2).join('/');
 }
 
 function fileRows(files, base) {
-	if (!files.length) return '<div class="empty">ไม่มีการแก้ไฟล์ผ่านเครื่องมือแก้ไฟล์ของ Claude</div>';
-	return files.map(f => `<div class="row">
-		<div class="file-path">${esc(relativePath(f.path, base))}</div>
-		<div class="row-side">${esc(ago(f.last_ts))}${f.session_count > 1 ? `<br>${f.session_count} session` : ''}</div>
-	</div>`).join('');
+	if (!files.length) return '<p class="empty">ไม่มีการแก้ไฟล์ผ่านเครื่องมือแก้ไฟล์</p>';
+	const row = f => `<div class="row"><span class="file-path" title="${esc(f.path)}">${esc(shortPath(f.path, base)).replace(/\//g, '/<wbr>')}</span>
+		<span class="row-side">${esc(ago(f.last_ts))}${f.session_count > 1 ? `, ${f.session_count} session` : ''}</span></div>`;
+	const first = files.slice(0, 8), rest = files.slice(8);
+	return `<div class="rows files">${first.map(row).join('')}</div>
+		${rest.length ? `<details class="files-more"><summary>ดูอีก ${rest.length} ไฟล์</summary><div class="rows files">${rest.map(row).join('')}</div></details>` : ''}`;
 }
 
 function sessionRow(s) {
 	const headline = s.summary?.data?.headline;
-	return `<a class="row" href="#/s/${encodeURIComponent(s.id)}">
-		<div class="row-title">${esc(s.title)}</div>
-		<div class="row-side"><span class="when">${esc(ago(s.last_ts))}</span><br>${s.human_turns} รอบ</div>
-		<div class="row-sub">${stateBadge(s)} ${accountChip(s.account_uuid, s.account_source)}</div>
-		${headline ? `<div class="snippet">${esc(headline)}</div>` : ''}
-	</a>`;
+	return `<a class="row ${accountPaint(s.account_uuid)}" href="#/s/${encodeURIComponent(s.id)}">
+		${shape(s.summary?.data?.status, { small: true })}
+		<span class="row-main"><span class="row-title">${esc(s.title)}</span>
+			<span class="row-sub">${s.is_automated ? 'งานอัตโนมัติ' : END_STATE[s.end_state] ?? END_STATE.unknown}${headline ? `, ${esc(headline)}` : ''}</span></span>
+		<span class="row-side">${esc(ago(s.last_ts))}<br>${accountChip(s.account_uuid, s.account_source)}</span></a>`;
 }
 
 async function renderProject(key) {
 	const data = await api(`/api/projects/${encodeURIComponent(key)}`);
 	useAccounts(data.accounts);
 	const p = data.project;
-	const people = p.sessions.filter(s => !s.is_automated);
-	const lastHuman = people[0];
 	pollWhileBusy(!data.summarizer?.paused && (p.summary.busy || p.sessions.some(s => s.summary.busy)));
-	app.innerHTML = `
-		<a class="back" href="#/">ทุกโปรเจค</a>
-		<div class="page-head">
-			<h1>${esc(p.name)}</h1>
-			<p class="mono">${esc(p.path)}</p>
-			<div class="stats">
-				<span><b>${p.sessions.length}</b> session</span>
-				<span>ทำล่าสุด <b>${esc(ago(p.sessions[0]?.last_ts))}</b></span>
-				${lastHuman ? `<span>session ล่าสุดที่คุณเปิด <b>${esc(lastHuman.title)}</b></span>` : ''}
+	app.innerHTML = `<div class="page">
+		${backLink('#/projects', 'โปรเจคทั้งหมด')}
+		<div class="page-cols">
+			<div class="stack">
+				<header class="page-head ${paint(p.name)}"><h1>${esc(p.name)}</h1><p class="mono">${esc(p.path)}</p>
+					<p>${p.sessions.length} session ทำล่าสุด ${esc(ago(p.sessions[0]?.last_ts))}</p></header>
+				${box('สถานะโปรเจค', summaryBody(p.summary, 'project', p.key, data.summarizer))}
+				${box('ช่วงที่ทำงานล่าสุด', timeline(p.sessions))}
+				${box('session ทั้งหมด', `<div class="rows">${p.sessions.map(sessionRow).join('')}</div>`)}
 			</div>
+			<div class="stack">${box('ไฟล์ที่แก้ล่าสุด', fileRows(p.files, p.path))}</div>
 		</div>
-		<section>
-			<h2>สถานะโปรเจค</h2>
-			${summaryCard(p.summary, 'project', p.key, data.summarizer)}
-		</section>
-		<section>
-			<h2>ช่วง ${TIMELINE_DAYS} วันล่าสุด</h2>
-			<div class="card timeline">${timeline(p.sessions)}</div>
-		</section>
-		<section>
-			<h2>Session ทั้งหมด</h2>
-			<div class="list">${p.sessions.map(sessionRow).join('')}</div>
-		</section>
-		<section>
-			<h2>ไฟล์ที่แก้ล่าสุด</h2>
-			<div class="list files">${fileRows(p.files, p.path)}</div>
-		</section>`;
+	</div>`;
 }
 
 async function renderSession(id) {
@@ -427,61 +542,57 @@ async function renderSession(id) {
 	pollWhileBusy(s.summary.busy && !data.summarizer?.paused);
 	const meta = [
 		['เริ่ม', s.first_ts ? formatDateTime(s.first_ts) : '-'],
-		['ทำล่าสุด', s.last_ts ? `${formatDateTime(s.last_ts)} (${ago(s.last_ts)})` : '-'],
-		['ใช้เวลาตั้งแต่ต้นจนจบ', s.first_ts && s.last_ts ? spanText(toMs(s.last_ts) - toMs(s.first_ts)) : '-'],
-		['จำนวนรอบที่คุณสั่ง', String(s.human_turns)],
+		['ทำล่าสุด', s.last_ts ? formatDateTime(s.last_ts) : '-'],
+		['ใช้เวลาทั้งหมด', s.first_ts && s.last_ts ? spanText(toMs(s.last_ts) - toMs(s.first_ts)) : '-'],
+		['รอบที่คุณสั่ง', String(s.human_turns)],
 		['โมเดล', s.model ?? '-'],
 		['branch', s.git_branch ?? '-'],
 	];
-	app.innerHTML = `
-		${s.project_key ? `<a class="back" href="#/p/${encodeURIComponent(s.project_key)}">${esc(s.project_name ?? 'โปรเจค')}</a>` : '<a class="back" href="#/">ทุกโปรเจค</a>'}
-		<div class="page-head">
-			<h1>${esc(s.title)}</h1>
-			<div class="stats">${stateBadge(s)} ${accountChip(s.account_uuid, s.account_source)} <span class="mono">${esc(s.cwd ?? '')}</span></div>
-		</div>
-		<div class="card"><dl class="meta-grid">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
-			${s.pr_url ? `<p>Pull request <a class="mono" href="${esc(s.pr_url)}" target="_blank" rel="noopener">${esc(s.pr_url)}</a></p>` : ''}
-		</div>
-		<section>
-			<h2>สรุป session นี้</h2>
-			${summaryCard(s.summary, 'session', s.id, data.summarizer)}
-		</section>
-		<section>
-			<h2>ที่คุณสั่งล่าสุด</h2>
-			<div class="card">
-				<div class="quote-label"><span>${s.last_human_ts ? esc(formatDateTime(s.last_human_ts)) : ''}</span></div>
-				<div class="quote">${esc(s.last_human_text ?? s.last_prompt ?? 'ไม่มีข้อความที่คุณพิมพ์ใน session นี้')}</div>
+	app.innerHTML = `<div class="page">
+		${s.project_key ? backLink(`#/p/${encodeURIComponent(s.project_key)}`, s.project_name ?? 'โปรเจค') : backLink('#/', 'วันนี้')}
+		<div class="page-cols">
+			<div class="stack">
+				<header class="page-head"><h1>${esc(s.title)}</h1>
+					<p>${s.is_automated ? 'งานอัตโนมัติ' : END_STATE[s.end_state] ?? END_STATE.unknown} ${accountChip(s.account_uuid, s.account_source)}</p></header>
+				${box('สรุป session นี้', summaryBody(s.summary, 'session', s.id, data.summarizer))}
+				${box('ที่คุณสั่งล่าสุด', `${s.last_human_ts ? `<p class="quote-when">${esc(formatDateTime(s.last_human_ts))}</p>` : ''}<div class="quote">${esc(s.last_human_text ?? s.last_prompt ?? 'ไม่มีข้อความที่คุณพิมพ์ใน session นี้')}</div>`)}
+				${box(`${s.tool === 'codex' ? 'Codex' : 'Claude'} ตอบล่าสุด`, `${s.last_assistant_ts ? `<p class="quote-when">${esc(formatDateTime(s.last_assistant_ts))}</p>` : ''}<div class="quote">${esc(s.last_assistant_text ?? 'ไม่มีคำตอบที่เป็นข้อความ')}</div>`)}
 			</div>
-		</section>
-		<section>
-			<h2>${s.tool === 'codex' ? 'Codex' : 'Claude'} ตอบล่าสุด</h2>
-			<div class="card">
-				<div class="quote-label"><span>${s.last_assistant_ts ? esc(formatDateTime(s.last_assistant_ts)) : ''}</span></div>
-				<div class="quote">${esc(s.last_assistant_text ?? 'ไม่มีคำตอบที่เป็นข้อความ')}</div>
+			<div class="stack">
+				${box('กลับไปทำต่อ', continueBlock(s.continue))}
+				${box('ข้อมูล session', `<dl class="meta-grid">${meta.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+					${s.cwd ? `<p class="mono" style="margin-top:12px">${esc(s.cwd)}</p>` : ''}
+					${s.pr_url ? `<p style="margin-top:8px"><a class="mono" href="${esc(s.pr_url)}" target="_blank" rel="noopener">${esc(s.pr_url)}</a></p>` : ''}`)}
+				${box('ไฟล์ที่แก้', fileRows(s.files, s.cwd))}
 			</div>
-		</section>
-		<section>
-			<h2>กลับไปทำต่อ</h2>
-			<div class="card">${continueBlock(s.continue)}</div>
-		</section>
-		<section>
-			<h2>ไฟล์ที่แก้ใน session นี้</h2>
-			<div class="list files">${fileRows(s.files, s.cwd)}</div>
-		</section>`;
+		</div>
+	</div>`;
 }
 
 // Routing
 
+const PAGES = { '/': 'today', '/projects': 'projects', '/accounts': 'accounts', '/settings': 'settings' };
+
 async function route({ quiet = false } = {}) {
 	const hash = location.hash.replace(/^#/, '') || '/';
 	const [, kind, rawId] = hash.match(/^\/(p|s)\/(.+)$/) ?? [];
+	const page = PAGES[hash] ?? (kind === 's' || kind === 'p' ? 'projects' : 'today');
+	for (const link of document.querySelectorAll('.nav')) {
+		if (link.dataset.page === page) link.setAttribute('aria-current', 'page');
+		else link.removeAttribute('aria-current');
+	}
 	clearTimeout(pollTimer);
 	const scrollY = window.scrollY;
-	if (!quiet) loading();
+	animateBars = !quiet;
+	if (!quiet) loading(page === 'projects' && !kind ? 'single' : 'cols');
 	try {
 		if (kind === 'p') await renderProject(decodeURIComponent(rawId));
 		else if (kind === 's') await renderSession(decodeURIComponent(rawId));
-		else await renderHome();
+		else if (page === 'projects') await renderProjects();
+		else if (page === 'accounts') await renderAccounts();
+		else if (page === 'settings') await renderSettings();
+		else await renderToday();
+		if (animateBars) releaseBars();
 	}
 	catch (error) {
 		if (!quiet) failed(error);
@@ -501,7 +612,6 @@ app.addEventListener('click', async event => {
 		await route({ quiet: true });
 		return;
 	}
-
 	const button = event.target.closest('[data-copy]');
 	if (!button) return;
 	button.dataset.label ??= button.textContent;
@@ -517,19 +627,29 @@ app.addEventListener('click', async event => {
 
 rescanBtn.addEventListener('click', async () => {
 	rescanBtn.disabled = true;
-	rescanBtn.textContent = 'กำลังสแกน';
+	rescanBtn.textContent = 'กำลังอ่าน';
 	try {
 		const { scan } = await api('/api/scan', { method: 'POST' });
 		showScan(scan);
-		await route();
+		await route({ quiet: true });
+	}
+	catch {
+		scanMeta.textContent = 'อ่าน log ไม่สำเร็จ';
 	}
 	finally {
 		rescanBtn.disabled = false;
-		rescanBtn.textContent = 'สแกนใหม่';
+		rescanBtn.textContent = 'อ่าน log ใหม่';
 	}
 });
 
-window.addEventListener('hashchange', route);
+themeBtn.addEventListener('click', () => {
+	const root = document.documentElement;
+	const dark = root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+	root.dataset.theme = dark ? 'light' : 'dark';
+	try { localStorage.setItem('worklog-theme', root.dataset.theme); } catch {}
+});
+
+window.addEventListener('hashchange', () => route());
 route();
 
 // Tells the server this page is open. When Worklog runs as an app it stops

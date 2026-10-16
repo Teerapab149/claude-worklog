@@ -3,20 +3,41 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="color-scheme" content="light dark">
 	<title>Worklog | งานที่ทำกับ AI</title>
 	<link rel="icon" href="icon.svg" type="image/svg+xml">
-	<link rel="preconnect" href="https://fonts.googleapis.com">
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-	<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="fonts/fonts.css">
 	<link rel="stylesheet" href="styles.css">
+	<script>
+		// Applies a saved theme before the first paint, so the page never flashes the other one.
+		try { const t = localStorage.getItem('worklog-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}
+	</script>
 </head>
 <body>
-	<nav class="bar">
-		<a class="brand" href="#/">Worklog</a>
-		<span class="bar-meta" id="scan-meta"></span>
-		<button class="btn" id="rescan" type="button">สแกนใหม่</button>
-	</nav>
-	<main id="app" aria-live="polite"></main>
+	<div class="shell">
+		<nav class="rail" aria-label="เมนูหลัก">
+			<a class="logo" href="#/">
+				<span class="logo-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+				<span>Worklog</span>
+			</a>
+			<div class="nav-list">
+				<a class="nav" href="#/" data-page="today"><span class="peg" aria-hidden="true"></span>วันนี้</a>
+				<a class="nav" href="#/projects" data-page="projects"><span class="peg peg-square" aria-hidden="true"></span>โปรเจค</a>
+				<a class="nav" href="#/accounts" data-page="accounts"><span class="peg" aria-hidden="true"></span>บัญชี</a>
+				<a class="nav" href="#/settings" data-page="settings"><span class="peg peg-square" aria-hidden="true"></span>ตั้งค่า</a>
+			</div>
+			<div class="rail-foot">
+				<p id="scan-meta" class="rail-meta">กำลังอ่าน log</p>
+				<div class="rail-actions">
+					<button class="btn-soft" id="rescan" type="button">อ่าน log ใหม่</button>
+					<button class="btn-soft btn-icon" id="theme" type="button" aria-label="สลับโหมดสว่างและมืด" title="สลับโหมดสว่างและมืด">
+						<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+					</button>
+				</div>
+			</div>
+		</nav>
+		<main id="app" aria-live="polite"></main>
+	</div>
 	<script type="module" src="app.js"></script>
 </body>
 </html>

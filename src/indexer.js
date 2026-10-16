@@ -61,6 +61,7 @@ export function scanFile(db, config, adapter, ctx, file, stats) {
 		const hooks = {
 			onEdit: e => db.addEdit(sessionId, e),
 			onQuota: e => db.addQuota(sessionId, e),
+			onUsage: e => db.addUsage(sessionId, e),
 		};
 		const fd = fs.openSync(file, 'r');
 		let newOffset = offset;
@@ -111,6 +112,10 @@ export function scan(db, config) {
 				// A file deleted or locked mid-scan is retried on the next scan.
 				if (error.code !== 'ENOENT' && error.code !== 'EBUSY') throw error;
 			}
+		}
+		// Stored under a session id of its own, so rescanning one thread never removes it.
+		for (const u of adapter.latestUsage?.(files) ?? []) {
+			db.addUsage(`${adapter.tool}:latest`, { ...u, account: adapter.tool, source: 'latest' });
 		}
 	}
 

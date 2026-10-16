@@ -16,6 +16,8 @@ const TYPES = {
 	'.js': 'text/javascript; charset=utf-8',
 	'.css': 'text/css; charset=utf-8',
 	'.svg': 'image/svg+xml',
+	'.woff2': 'font/woff2',
+	'.ico': 'image/x-icon',
 };
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -89,6 +91,7 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 			return data ? { accounts: queries.accounts(db, config), summarizer: queue?.status() ?? null, session: data } : null;
 		}],
 		['POST', /^\/api\/scan$/, () => ({ scan: runScan() })],
+		['GET', /^\/api\/settings$/, () => ({ scan: lastScan, settings: queries.settings(db, config) })],
 	];
 
 	function summarize(kind, ref) {

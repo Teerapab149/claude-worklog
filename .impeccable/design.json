@@ -1,0 +1,916 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-16T20:20:27.099Z",
+  "title": "Design System: Worklog",
+  "extensions": {
+    "colorMeta": {
+      "birch-ground": {
+        "role": "neutral",
+        "displayName": "Birch Ground",
+        "canonical": "#F4EEE4",
+        "oklch": "oklch(95.1% 0.015 80.7)",
+        "tonalRamp": [
+          "#0E0B05",
+          "#2A261E",
+          "#49443C",
+          "#6A655D",
+          "#8E887F",
+          "#B3ADA4",
+          "#D6D0C6",
+          "#F4EEE4"
+        ]
+      },
+      "honey-rail": {
+        "role": "neutral",
+        "displayName": "Honey Rail",
+        "canonical": "#E2C9A0",
+        "oklch": "oklch(84.7% 0.061 80.0)",
+        "tonalRamp": [
+          "#130900",
+          "#352300",
+          "#56411B",
+          "#79623C",
+          "#9D855F",
+          "#C3AA82",
+          "#E6CDA4",
+          "#FFECCD"
+        ]
+      },
+      "honey-rail-edge": {
+        "role": "neutral",
+        "displayName": "Honey Rail Edge",
+        "canonical": "#C9A877",
+        "oklch": "oklch(74.9% 0.076 77.1)",
+        "tonalRamp": [
+          "#140800",
+          "#362200",
+          "#5B3F0A",
+          "#7E6030",
+          "#A38353",
+          "#C9A877",
+          "#EDCB99",
+          "#FFECD0"
+        ]
+      },
+      "panel-cream": {
+        "role": "neutral",
+        "displayName": "Panel Cream",
+        "canonical": "#FFFDF8",
+        "oklch": "oklch(99.4% 0.007 88.6)",
+        "tonalRamp": [
+          "#0C0B08",
+          "#282623",
+          "#464541",
+          "#686662",
+          "#8B8984",
+          "#B0AEA9",
+          "#D3D1CC",
+          "#F0EEE9"
+        ]
+      },
+      "panel-edge": {
+        "role": "neutral",
+        "displayName": "Panel Edge",
+        "canonical": "#E6DCCB",
+        "oklch": "oklch(89.8% 0.025 81.1)",
+        "tonalRamp": [
+          "#110A02",
+          "#2D2518",
+          "#4C4436",
+          "#6E6556",
+          "#918878",
+          "#B6AD9C",
+          "#DAD0BF",
+          "#F7EDDC"
+        ]
+      },
+      "block-white": {
+        "role": "neutral",
+        "displayName": "Block White",
+        "canonical": "#FFFFFF",
+        "oklch": "oklch(100.0% 0.000 89.9)",
+        "tonalRamp": [
+          "#0B0B0B",
+          "#262626",
+          "#454545",
+          "#666666",
+          "#898989",
+          "#AEAEAE",
+          "#D1D1D1",
+          "#EEEEEE"
+        ]
+      },
+      "block-line": {
+        "role": "neutral",
+        "displayName": "Block Line",
+        "canonical": "#EFE6D8",
+        "oklch": "oklch(92.8% 0.021 79.1)",
+        "tonalRamp": [
+          "#100A03",
+          "#2C251B",
+          "#4B4438",
+          "#6D6559",
+          "#90887B",
+          "#B5AD9F",
+          "#D9D0C2",
+          "#F6EDDF"
+        ]
+      },
+      "walnut-ink": {
+        "role": "neutral",
+        "displayName": "Walnut Ink",
+        "canonical": "#3B2F2A",
+        "oklch": "oklch(31.7% 0.020 43.8)",
+        "tonalRamp": [
+          "#120805",
+          "#2F231F",
+          "#4F423D",
+          "#70635D",
+          "#948680",
+          "#B9AAA4",
+          "#DDCDC7",
+          "#FBEBE4"
+        ]
+      },
+      "walnut-ink-2": {
+        "role": "neutral",
+        "displayName": "Walnut Ink 2",
+        "canonical": "#6B5A4F",
+        "oklch": "oklch(48.1% 0.028 54.8)",
+        "tonalRamp": [
+          "#140802",
+          "#312319",
+          "#514137",
+          "#736257",
+          "#978579",
+          "#BDAA9D",
+          "#E0CDC0",
+          "#FEEADD"
+        ]
+      },
+      "walnut-ink-3": {
+        "role": "neutral",
+        "displayName": "Walnut Ink 3",
+        "canonical": "#76665B",
+        "oklch": "oklch(52.2% 0.027 56.6)",
+        "tonalRamp": [
+          "#140802",
+          "#31231A",
+          "#504237",
+          "#726358",
+          "#96857A",
+          "#BCAA9E",
+          "#DFCDC1",
+          "#FDEADE"
+        ]
+      },
+      "sage": {
+        "role": "secondary",
+        "displayName": "Sage",
+        "canonical": "#8DB596",
+        "oklch": "oklch(73.5% 0.062 151.5)",
+        "tonalRamp": [
+          "#001003",
+          "#082F16",
+          "#2A4E34",
+          "#4B7054",
+          "#6D9476",
+          "#92BA9B",
+          "#B4DDBD",
+          "#D1FBDA"
+        ]
+      },
+      "sage-soft": {
+        "role": "secondary",
+        "displayName": "Sage Soft",
+        "canonical": "#DCEBDF",
+        "oklch": "oklch(92.6% 0.023 151.6)",
+        "tonalRamp": [
+          "#050E07",
+          "#1E2A21",
+          "#3C493F",
+          "#5D6A60",
+          "#808D82",
+          "#A4B2A7",
+          "#C7D5CA",
+          "#E4F3E7"
+        ]
+      },
+      "sage-ink": {
+        "role": "secondary",
+        "displayName": "Sage Ink",
+        "canonical": "#3F6A49",
+        "oklch": "oklch(48.3% 0.072 150.4)",
+        "tonalRamp": [
+          "#001003",
+          "#023012",
+          "#255030",
+          "#477250",
+          "#699673",
+          "#8DBB97",
+          "#B0DFB9",
+          "#CDFDD6"
+        ]
+      },
+      "sky": {
+        "role": "secondary",
+        "displayName": "Sky",
+        "canonical": "#8FBFE0",
+        "oklch": "oklch(78.2% 0.069 238.8)",
+        "tonalRamp": [
+          "#000D1A",
+          "#002A41",
+          "#1B4A66",
+          "#3E6C8A",
+          "#618FAF",
+          "#85B5D5",
+          "#A7D8FA",
+          "#E0F1FE"
+        ]
+      },
+      "sky-soft": {
+        "role": "secondary",
+        "displayName": "Sky Soft",
+        "canonical": "#DCEBF6",
+        "oklch": "oklch(93.2% 0.022 239.4)",
+        "tonalRamp": [
+          "#040C13",
+          "#1D2830",
+          "#3B4750",
+          "#5B6872",
+          "#7E8B95",
+          "#A2B0BB",
+          "#C5D3DE",
+          "#E2F1FC"
+        ]
+      },
+      "sky-ink": {
+        "role": "secondary",
+        "displayName": "Sky Ink",
+        "canonical": "#2F5F80",
+        "oklch": "oklch(46.7% 0.075 240.9)",
+        "tonalRamp": [
+          "#000D1B",
+          "#002942",
+          "#184969",
+          "#3B6B8D",
+          "#5F8FB3",
+          "#83B5D9",
+          "#A5D8FE",
+          "#E0F1FE"
+        ]
+      },
+      "butter": {
+        "role": "secondary",
+        "displayName": "Butter",
+        "canonical": "#F2CF6B",
+        "oklch": "oklch(86.5% 0.125 90.3)",
+        "tonalRamp": [
+          "#110A00",
+          "#312500",
+          "#554300",
+          "#7D6302",
+          "#A6850E",
+          "#CCAA44",
+          "#F0CD69",
+          "#FFEEBE"
+        ]
+      },
+      "butter-soft": {
+        "role": "secondary",
+        "displayName": "Butter Soft",
+        "canonical": "#FBEFC9",
+        "oklch": "oklch(95.2% 0.051 92.6)",
+        "tonalRamp": [
+          "#110A00",
+          "#2F2504",
+          "#4F4423",
+          "#706644",
+          "#948966",
+          "#B9AE8A",
+          "#DDD1AC",
+          "#FAEEC8"
+        ]
+      },
+      "butter-ink": {
+        "role": "secondary",
+        "displayName": "Butter Ink",
+        "canonical": "#7A5A06",
+        "oklch": "oklch(48.8% 0.098 83.8)",
+        "tonalRamp": [
+          "#120900",
+          "#332300",
+          "#594000",
+          "#816012",
+          "#A5843D",
+          "#CBA962",
+          "#F0CC85",
+          "#FFECC9"
+        ]
+      },
+      "lilac": {
+        "role": "secondary",
+        "displayName": "Lilac",
+        "canonical": "#B9A6E0",
+        "oklch": "oklch(76.2% 0.084 299.4)",
+        "tonalRamp": [
+          "#120028",
+          "#2D1A49",
+          "#4C3A6B",
+          "#6D5B8F",
+          "#907EB5",
+          "#B5A2DC",
+          "#D8C6FF",
+          "#F1EBFE"
+        ]
+      },
+      "lilac-soft": {
+        "role": "secondary",
+        "displayName": "Lilac Soft",
+        "canonical": "#E9E2F6",
+        "oklch": "oklch(92.4% 0.028 301.7)",
+        "tonalRamp": [
+          "#0D0815",
+          "#292332",
+          "#484252",
+          "#696374",
+          "#8C8598",
+          "#B1AABD",
+          "#D4CDE1",
+          "#F2EBFF"
+        ]
+      },
+      "lilac-ink": {
+        "role": "secondary",
+        "displayName": "Lilac Ink",
+        "canonical": "#5A4590",
+        "oklch": "oklch(45.0% 0.119 294.0)",
+        "tonalRamp": [
+          "#10002C",
+          "#2C1159",
+          "#4A347D",
+          "#6B56A3",
+          "#8D7ACA",
+          "#B29FF2",
+          "#D3C8FE",
+          "#EFECFE"
+        ]
+      },
+      "coral": {
+        "role": "primary",
+        "displayName": "Coral",
+        "canonical": "#F09A84",
+        "oklch": "oklch(76.8% 0.109 35.1)",
+        "tonalRamp": [
+          "#200000",
+          "#4B0B00",
+          "#742A17",
+          "#9A4C39",
+          "#C1705B",
+          "#EA947F",
+          "#FFC0AF",
+          "#FFE9E4"
+        ],
+        "purpose": "The ทำต่อ button only."
+      },
+      "coral-edge": {
+        "role": "primary",
+        "displayName": "Coral Edge",
+        "canonical": "#D9785F",
+        "oklch": "oklch(67.5% 0.127 35.4)",
+        "tonalRamp": [
+          "#200000",
+          "#4B0B00",
+          "#7A2208",
+          "#A1462F",
+          "#CA6A52",
+          "#F38F75",
+          "#FFC0AF",
+          "#FFE9E3"
+        ]
+      },
+      "coral-ink": {
+        "role": "primary",
+        "displayName": "Coral Ink",
+        "canonical": "#3A1E16",
+        "oklch": "oklch(27.1% 0.046 36.8)",
+        "tonalRamp": [
+          "#1B0401",
+          "#3A1E16",
+          "#5B3C33",
+          "#7E5D53",
+          "#A38076",
+          "#C9A49A",
+          "#EDC7BC",
+          "#FEE9E3"
+        ]
+      },
+      "alert-soft": {
+        "role": "tertiary",
+        "displayName": "Alert Soft",
+        "canonical": "#F1E1DC",
+        "oklch": "oklch(92.1% 0.019 38.1)",
+        "tonalRamp": [
+          "#120806",
+          "#2F2320",
+          "#4E423E",
+          "#70635E",
+          "#948681",
+          "#B9AAA5",
+          "#DDCDC8",
+          "#FBEBE5"
+        ]
+      },
+      "alert-ink": {
+        "role": "tertiary",
+        "displayName": "Alert Ink",
+        "canonical": "#8E3B33",
+        "oklch": "oklch(46.3% 0.115 27.9)",
+        "tonalRamp": [
+          "#210000",
+          "#500002",
+          "#76251F",
+          "#9D4940",
+          "#C56C62",
+          "#EE9185",
+          "#FEBFB6",
+          "#FFE9E5"
+        ],
+        "purpose": "Errors, paused summaries, low or waiting accounts, settings that are off. Never coral."
+      },
+      "walnut-ground-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Ground (dark)",
+        "canonical": "#231B17",
+        "oklch": "oklch(23.0% 0.015 48.1)",
+        "tonalRamp": [
+          "#100906",
+          "#2D2420",
+          "#4C433E",
+          "#6E645F",
+          "#918782",
+          "#B6ABA6",
+          "#DACEC9",
+          "#F7ECE6"
+        ]
+      },
+      "walnut-rail-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Rail (dark)",
+        "canonical": "#3A2C22",
+        "oklch": "oklch(30.6% 0.027 57.0)",
+        "tonalRamp": [
+          "#140802",
+          "#312319",
+          "#514237",
+          "#736257",
+          "#96857A",
+          "#BCAA9E",
+          "#DFCDC0",
+          "#FDEADD"
+        ]
+      },
+      "walnut-panel-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Panel (dark)",
+        "canonical": "#2C221D",
+        "oklch": "oklch(26.2% 0.018 48.0)",
+        "tonalRamp": [
+          "#110905",
+          "#2E241F",
+          "#4D423D",
+          "#6F635D",
+          "#938680",
+          "#B8ABA4",
+          "#DBCEC7",
+          "#F9EBE4"
+        ]
+      },
+      "walnut-panel-edge-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Panel Edge (dark)",
+        "canonical": "#19110D",
+        "oklch": "oklch(18.7% 0.016 47.9)",
+        "tonalRamp": [
+          "#110906",
+          "#2D2420",
+          "#4C433E",
+          "#6E645E",
+          "#928781",
+          "#B7ABA6",
+          "#DACEC8",
+          "#F8ECE6"
+        ]
+      },
+      "walnut-block-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Block (dark)",
+        "canonical": "#342923",
+        "oklch": "oklch(29.1% 0.020 50.2)",
+        "tonalRamp": [
+          "#120905",
+          "#2F241E",
+          "#4E423C",
+          "#70635C",
+          "#94867F",
+          "#B9ABA3",
+          "#DCCEC6",
+          "#FAEBE3"
+        ]
+      },
+      "walnut-block-line-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Block Line (dark)",
+        "canonical": "#45372F",
+        "oklch": "oklch(34.9% 0.024 51.4)",
+        "tonalRamp": [
+          "#130803",
+          "#30231C",
+          "#504239",
+          "#72625A",
+          "#96857C",
+          "#BBAAA0",
+          "#DFCDC3",
+          "#FDEAE0"
+        ]
+      },
+      "walnut-sunk-dark": {
+        "role": "neutral",
+        "displayName": "Walnut Sunk (dark)",
+        "canonical": "#261E19",
+        "oklch": "oklch(24.3% 0.016 53.8)",
+        "tonalRamp": [
+          "#100906",
+          "#2D241F",
+          "#4C433D",
+          "#6E645E",
+          "#918781",
+          "#B6ACA5",
+          "#DACEC8",
+          "#F7ECE5"
+        ]
+      },
+      "linen-ink-dark": {
+        "role": "neutral",
+        "displayName": "Linen Ink (dark)",
+        "canonical": "#F1E7DA",
+        "oklch": "oklch(93.2% 0.020 74.7)",
+        "tonalRamp": [
+          "#100A03",
+          "#2C251B",
+          "#4C4439",
+          "#6D6559",
+          "#91887C",
+          "#B6ACA0",
+          "#D9CFC3",
+          "#F7EDE0"
+        ]
+      },
+      "linen-ink-2-dark": {
+        "role": "neutral",
+        "displayName": "Linen Ink 2 (dark)",
+        "canonical": "#CDBDAD",
+        "oklch": "oklch(80.7% 0.029 67.4)",
+        "tonalRamp": [
+          "#130901",
+          "#302417",
+          "#504235",
+          "#716355",
+          "#958677",
+          "#BBAB9B",
+          "#DECEBE",
+          "#FCEBDB"
+        ]
+      },
+      "linen-ink-3-dark": {
+        "role": "neutral",
+        "displayName": "Linen Ink 3 (dark)",
+        "canonical": "#A39182",
+        "oklch": "oklch(66.8% 0.031 62.1)",
+        "tonalRamp": [
+          "#140801",
+          "#312317",
+          "#514234",
+          "#736254",
+          "#978577",
+          "#BDAA9B",
+          "#E0CDBD",
+          "#FEEBDA"
+        ]
+      },
+      "coral-dark": {
+        "role": "primary",
+        "displayName": "Coral (dark)",
+        "canonical": "#E8907A",
+        "oklch": "oklch(73.9% 0.112 34.8)",
+        "tonalRamp": [
+          "#1F0000",
+          "#4B0A00",
+          "#752816",
+          "#9C4B38",
+          "#C36F5A",
+          "#EC937D",
+          "#FFC0B0",
+          "#FEE9E4"
+        ]
+      },
+      "coral-edge-dark": {
+        "role": "primary",
+        "displayName": "Coral Edge (dark)",
+        "canonical": "#A85A47",
+        "oklch": "oklch(55.5% 0.107 34.7)",
+        "tonalRamp": [
+          "#200000",
+          "#4C0A00",
+          "#732A19",
+          "#994D3A",
+          "#C1705C",
+          "#E99580",
+          "#FFC0B0",
+          "#FFE9E4"
+        ]
+      },
+      "alert-soft-dark": {
+        "role": "tertiary",
+        "displayName": "Alert Soft (dark)",
+        "canonical": "#3E2824",
+        "oklch": "oklch(30.3% 0.034 30.6)",
+        "tonalRamp": [
+          "#170604",
+          "#35201C",
+          "#563E3A",
+          "#795F5A",
+          "#9D827D",
+          "#C3A6A1",
+          "#E7C9C4",
+          "#FEE9E5"
+        ]
+      },
+      "alert-ink-dark": {
+        "role": "tertiary",
+        "displayName": "Alert Ink (dark)",
+        "canonical": "#F0B0A4",
+        "oklch": "oklch(81.4% 0.077 30.8)",
+        "tonalRamp": [
+          "#200000",
+          "#45140D",
+          "#68342B",
+          "#8D554B",
+          "#B3786D",
+          "#DB9C90",
+          "#FFBFB3",
+          "#FEE9E5"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Page heading; 28px under 820px."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Project name on a block, one line."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Group headings inside a box; nav uses 17px."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Running text. Nunito for Latin, Noto Sans Thai Looped for Thai."
+      },
+      "body-small": {
+        "displayName": "Body Small",
+        "purpose": "Block ledes, summaries, help text."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Section tags, buttons, counts; ทำต่อ uses 600 at 17px."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Times, account notes, sub lines, in Walnut Ink 2."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "File paths and commands only."
+      }
+    },
+    "shadows": [
+      {
+        "name": "block-depth",
+        "value": "0 6px 0 var(--panel-edge), 0 12px 24px rgb(90 64 40 / 8%)",
+        "purpose": "Tagged boxes and skeletons. Dark blur rgb(0 0 0 / 28%)."
+      },
+      {
+        "name": "block-depth-sm",
+        "value": "0 4px 0 var(--panel-edge), 0 8px 16px rgb(90 64 40 / 6%)",
+        "purpose": "Back pill. Dark blur rgb(0 0 0 / 22%)."
+      },
+      {
+        "name": "paint-edge",
+        "value": "0 6px 0 var(--c-soft), 0 10px 20px rgb(90 64 40 / 6%)",
+        "purpose": "Project blocks, edged in their paint."
+      },
+      {
+        "name": "rail-edge",
+        "value": "0 6px 0 var(--rail-edge), 0 12px 24px rgb(90 64 40 / 10%)",
+        "purpose": "The honey rail."
+      },
+      {
+        "name": "press-edge-go",
+        "value": "0 4px 0 var(--coral-edge)",
+        "purpose": "ทำต่อ at rest; collapses with translateY(4px) when pressed."
+      },
+      {
+        "name": "press-edge-soft",
+        "value": "0 3px 0 var(--rail-edge)",
+        "purpose": "Soft and copy buttons; collapses with translateY(3px)."
+      },
+      {
+        "name": "tube-channel",
+        "value": "inset 0 2px 0 rgb(0 0 0 / 8%)",
+        "purpose": "Usage tube channel; the fill carries inset 0 -3px 0 rgb(0 0 0 / 12%)."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(.16, 1, .3, 1)",
+        "purpose": "All state transitions."
+      },
+      {
+        "name": "press",
+        "value": ".15s",
+        "purpose": "Button press into its edge."
+      },
+      {
+        "name": "hover",
+        "value": ".2s",
+        "purpose": "Nav, row and mini card hover."
+      },
+      {
+        "name": "tube-fill",
+        "value": "width .9s",
+        "purpose": "Tubes fill from empty on page load."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "transition-duration: 0s",
+        "purpose": "All motion removed under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "side-column-drops",
+        "value": "1180px"
+      },
+      {
+        "name": "rail-becomes-bar",
+        "value": "820px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "ทำต่อ Button",
+      "kind": "button",
+      "refersTo": "button-go",
+      "description": "The single coral action on a project block; presses 4px into its edge.",
+      "html": "<button class=\"ds-btn-go\" type=\"button\">ทำต่อ</button>",
+      "css": ".ds-btn-go { display: inline-flex; align-items: center; gap: 8px; padding: 10px 24px; border: 0; border-radius: 999px; background: var(--coral, #F09A84); color: var(--coral-ink, #3A1E16); font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 600; font-size: 17px; cursor: pointer; box-shadow: 0 4px 0 var(--coral-edge, #D9785F); transition: transform .15s cubic-bezier(.16,1,.3,1), box-shadow .15s cubic-bezier(.16,1,.3,1), filter .15s; } .ds-btn-go:hover { filter: brightness(1.04); } .ds-btn-go:active { transform: translateY(4px); box-shadow: 0 0 0 var(--coral-edge, #D9785F); } .ds-btn-go:focus-visible { outline: 3px solid var(--sky, #8FBFE0); outline-offset: 3px; }"
+    },
+    {
+      "name": "Soft Button",
+      "kind": "button",
+      "refersTo": "button-soft",
+      "description": "Secondary actions on the rail, such as rescanning the logs.",
+      "html": "<div class=\"ds-rail-bg\"><button class=\"ds-btn-soft\" type=\"button\">อ่าน log ใหม่</button></div>",
+      "css": ".ds-rail-bg { background: var(--rail, #E2C9A0); padding: 16px; border-radius: 20px; } .ds-btn-soft { border: 0; cursor: pointer; padding: 8px 16px; border-radius: 999px; background: var(--panel, #FFFDF8); color: var(--ink, #3B2F2A); font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 14px; box-shadow: 0 3px 0 var(--rail-edge, #C9A877); transition: transform .15s cubic-bezier(.16,1,.3,1), box-shadow .15s cubic-bezier(.16,1,.3,1); } .ds-btn-soft:hover { background: var(--block, #FFFFFF); } .ds-btn-soft:active { transform: translateY(3px); box-shadow: 0 0 0 var(--rail-edge, #C9A877); } .ds-btn-soft:focus-visible { outline: 3px solid var(--sky, #8FBFE0); outline-offset: 3px; }"
+    },
+    {
+      "name": "Tagged Box",
+      "kind": "card",
+      "refersTo": "tagged-box",
+      "description": "Every section: a cream box with its tag on the top edge and block depth below.",
+      "html": "<section class=\"ds-box\"><h2 class=\"ds-tag\">บัญชี</h2><p class=\"ds-box-body\">เนื้อหาของส่วนนี้</p></section>",
+      "css": ".ds-box { position: relative; background: var(--panel, #FFFDF8); border-radius: 28px; padding: 36px 24px 24px; margin-top: 14px; box-shadow: 0 6px 0 var(--panel-edge, #E6DCCB), 0 12px 24px rgb(90 64 40 / 8%); color: var(--ink, #3B2F2A); font-family: Nunito, \"Noto Sans Thai Looped\", system-ui, sans-serif; } .ds-tag { position: absolute; top: -14px; left: 24px; margin: 0; padding: 4px 16px; border-radius: 999px; background: var(--tag-bg, #3B2F2A); color: var(--tag-ink, #F4EEE4); font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 14px; line-height: 1.6; } .ds-box-body { margin: 0; }"
+    },
+    {
+      "name": "Project Block",
+      "kind": "custom",
+      "refersTo": "project-block",
+      "description": "A piece of work worth picking up: paint band, status shape, name, next step, reasons.",
+      "html": "<article class=\"ds-block\"><div class=\"ds-band\"></div><div class=\"ds-block-body\"><div class=\"ds-block-title\"><span class=\"ds-shape\" role=\"img\" aria-label=\"กำลังทำ\"></span><h3>worklog</h3></div><p class=\"ds-lede\">ปรับหน้าตาใหม่เป็นของเล่นไม้</p><div class=\"ds-next\"><b>ขั้นต่อไป</b>เขียน DESIGN.md</div><div class=\"ds-chips\"><span class=\"ds-chip\">เพิ่งทำเมื่อวาน</span><span class=\"ds-chip ds-hot\">มีกำหนดส่ง</span></div></div></article>",
+      "css": ".ds-block { --c: var(--sky, #8FBFE0); --c-soft: var(--sky-soft, #DCEBF6); max-width: 280px; display: flex; flex-direction: column; background: var(--block, #FFFFFF); border: 2px solid var(--block-line, #EFE6D8); border-radius: 24px; overflow: hidden; box-shadow: 0 6px 0 var(--c-soft), 0 10px 20px rgb(90 64 40 / 6%); color: var(--ink, #3B2F2A); font-family: Nunito, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-size: 16px; line-height: 1.65; } .ds-band { height: 16px; background: var(--c); } .ds-block-body { display: flex; flex-direction: column; gap: 12px; padding: 16px 20px 20px; } .ds-block-title { display: flex; align-items: center; gap: 10px; } .ds-block-title h3 { margin: 0; font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 21px; line-height: 1.3; } .ds-shape { width: 18px; height: 18px; border-radius: 50%; background: var(--c); flex: none; } .ds-lede { margin: 0; font-size: 14.5px; color: var(--ink-2, #6B5A4F); } .ds-next { background: var(--sunk, #F4EEE4); border-radius: 16px; padding: 12px 16px; font-weight: 500; } .ds-next b { display: block; font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 13px; color: var(--ink-2, #6B5A4F); } .ds-chips { display: flex; flex-wrap: wrap; gap: 8px; } .ds-chip { font-size: 13px; line-height: 1.5; padding: 4px 12px; border-radius: 12px; background: var(--sunk, #F4EEE4); color: var(--ink-2, #6B5A4F); } .ds-chip.ds-hot { background: var(--butter-soft, #FBEFC9); color: var(--butter-ink, #7A5A06); }"
+    },
+    {
+      "name": "Status Shapes",
+      "kind": "custom",
+      "description": "State by shape as well as colour: circle, square, triangle, ring, dashed ring.",
+      "html": "<div class=\"ds-shapes\"><span class=\"ds-s\" role=\"img\" aria-label=\"กำลังทำ\"></span><span class=\"ds-s ds-wait\" role=\"img\" aria-label=\"รออยู่\"></span><span class=\"ds-s ds-blocked\" role=\"img\" aria-label=\"ติดปัญหา\"></span><span class=\"ds-s ds-done\" role=\"img\" aria-label=\"เสร็จแล้ว\"></span><span class=\"ds-s ds-none\" role=\"img\" aria-label=\"ยังไม่มีสรุป\"></span></div>",
+      "css": ".ds-shapes { display: flex; gap: 16px; align-items: center; } .ds-s { width: 18px; height: 18px; border-radius: 50%; background: var(--sky, #8FBFE0); box-sizing: border-box; } .ds-wait { border-radius: 5px; } .ds-blocked { border-radius: 0; background: none; width: 20px; position: relative; } .ds-blocked::before { content: \"\"; position: absolute; inset: 0; background: var(--butter, #F2CF6B); clip-path: polygon(50% 0, 100% 100%, 0 100%); border-radius: 3px; } .ds-done { background: none; border: 3px solid var(--sage, #8DB596); } .ds-none { background: none; border: 3px dashed var(--ink-3, #76665B); }"
+    },
+    {
+      "name": "Usage Tubes",
+      "kind": "custom",
+      "refersTo": "usage-tube",
+      "description": "One painted tube per usage window, filled with what is left; butter under 20%.",
+      "html": "<div class=\"ds-tubes\"><div class=\"ds-tube-row\"><div class=\"ds-tube-head\"><span>5 ชั่วโมง</span><span class=\"ds-left\">เหลือ 64%</span></div><div class=\"ds-tube\" role=\"meter\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"64\" aria-label=\"5 ชั่วโมง เหลือ 64%\"><span class=\"ds-fill\" style=\"width:64%\"></span></div></div><div class=\"ds-tube-row ds-low\"><div class=\"ds-tube-head\"><span>รายสัปดาห์</span><span class=\"ds-left\">เหลือ 12%</span></div><div class=\"ds-tube\" role=\"meter\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"12\" aria-label=\"รายสัปดาห์ เหลือ 12%\"><span class=\"ds-fill\" style=\"width:12%\"></span></div></div></div>",
+      "css": ".ds-tubes { --c: var(--lilac, #B9A6E0); display: grid; gap: 10px; max-width: 280px; font-family: Nunito, \"Noto Sans Thai Looped\", system-ui, sans-serif; } .ds-tube-row { display: grid; gap: 4px; } .ds-tube-head { display: flex; justify-content: space-between; font-size: 13px; color: var(--ink-2, #6B5A4F); } .ds-left { font-weight: 700; color: var(--ink, #3B2F2A); font-variant-numeric: tabular-nums; } .ds-tube { position: relative; height: 18px; border-radius: 999px; overflow: hidden; background: var(--sunk, #F4EEE4); box-shadow: inset 0 2px 0 rgb(0 0 0 / 8%); } .ds-fill { position: absolute; inset: 3px auto 3px 3px; max-width: calc(100% - 6px); border-radius: 999px; background: var(--c); box-shadow: inset 0 -3px 0 rgb(0 0 0 / 12%); transition: width .9s cubic-bezier(.16,1,.3,1); } .ds-low .ds-fill { background: var(--butter, #F2CF6B); } .ds-low .ds-left { color: var(--alert-ink, #8E3B33); }"
+    },
+    {
+      "name": "Rail Navigation",
+      "kind": "nav",
+      "refersTo": "nav-item",
+      "description": "Honey rail with peg-led nav pills; the current page sits on a rail edge.",
+      "html": "<nav class=\"ds-rail\" aria-label=\"เมนูหลัก\"><a class=\"ds-nav\" href=\"#\" aria-current=\"page\"><span class=\"ds-peg\"></span>วันนี้</a><a class=\"ds-nav\" href=\"#\"><span class=\"ds-peg ds-sq\"></span>โปรเจค</a><a class=\"ds-nav\" href=\"#\"><span class=\"ds-peg\"></span>บัญชี</a></nav>",
+      "css": ".ds-rail { display: flex; flex-direction: column; gap: 8px; width: 208px; padding: 16px; background: var(--rail, #E2C9A0); border-radius: 32px; box-shadow: 0 6px 0 var(--rail-edge, #C9A877), 0 12px 24px rgb(90 64 40 / 10%); } .ds-nav { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 20px; font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 17px; color: var(--ink-2, #6B5A4F); text-decoration: none; transition: background .2s cubic-bezier(.16,1,.3,1), color .2s cubic-bezier(.16,1,.3,1); } .ds-nav:hover { background: color-mix(in srgb, var(--panel, #FFFDF8) 45%, transparent); color: var(--ink, #3B2F2A); } .ds-nav[aria-current=\"page\"] { background: var(--panel, #FFFDF8); color: var(--ink, #3B2F2A); box-shadow: 0 4px 0 var(--rail-edge, #C9A877); } .ds-nav:focus-visible { outline: 3px solid var(--sky, #8FBFE0); outline-offset: 3px; } .ds-peg { width: 14px; height: 14px; border-radius: 50%; background: var(--ink-3, #76665B); flex: none; } .ds-sq { border-radius: 4px; } .ds-nav[aria-current=\"page\"] .ds-peg { background: var(--ink, #3B2F2A); }"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Pill search with an inline SVG magnifier; border turns sky on focus.",
+      "html": "<label class=\"ds-search\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><circle cx=\"11\" cy=\"11\" r=\"7\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\"/><path d=\"M20 20l-3.5-3.5\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\"/></svg><input type=\"search\" placeholder=\"ค้นหาโปรเจค\"></label>",
+      "css": ".ds-search { display: flex; align-items: center; gap: 8px; padding: 0 16px; border-radius: 999px; background: var(--block, #FFFFFF); border: 2px solid var(--block-line, #EFE6D8); max-width: 320px; } .ds-search:focus-within { border-color: var(--sky, #8FBFE0); } .ds-search svg { width: 18px; height: 18px; color: var(--ink-3, #76665B); flex: none; } .ds-search input { border: 0; outline: 0; background: transparent; color: var(--ink, #3B2F2A); font-family: Nunito, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-size: 16px; padding: 10px 0; width: 100%; } .ds-search input::placeholder { color: var(--ink-3, #76665B); }"
+    },
+    {
+      "name": "Reason Chips and Stamp",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "Reason chips (plain, hot, quiet) and the tilted stamp for finished work.",
+      "html": "<div class=\"ds-chiprow\"><span class=\"ds-chip2\">แก้ไขล่าสุด 2 ชม.ที่แล้ว</span><span class=\"ds-chip2 ds-hot2\">ใกล้กำหนดส่ง</span><span class=\"ds-chip2 ds-quiet\">ไม่มีสรุป</span><span class=\"ds-stamp\">เสร็จแล้ว</span></div>",
+      "css": ".ds-chiprow { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-family: Nunito, \"Noto Sans Thai Looped\", system-ui, sans-serif; } .ds-chip2 { font-size: 13px; line-height: 1.5; padding: 4px 12px; border-radius: 12px; background: var(--sunk, #F4EEE4); color: var(--ink-2, #6B5A4F); } .ds-hot2 { background: var(--butter-soft, #FBEFC9); color: var(--butter-ink, #7A5A06); } .ds-quiet { background: transparent; border: 1.5px dashed var(--block-line, #EFE6D8); } .ds-stamp { font-family: Mitr, \"Noto Sans Thai Looped\", system-ui, sans-serif; font-weight: 500; font-size: 12px; line-height: 1.5; padding: 1px 10px; border-radius: 8px; border: 2px solid currentColor; color: var(--sage-ink, #3F6A49); transform: rotate(-3deg); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Rubberwood Toy Workshop",
+    "overview": "Worklog is a shelf of painted wooden toys. Each project is a rounded block you could pick up, each section of the page is a box with a tag on its lid, and each account keeps its usage in painted tubes. The ground is pale birch, the navigation is a honey wood rail, the ink is walnut. At night the whole workshop turns to walnut wood and the same paints come back dimmed, because the person leaves this window open beside the Claude app for hours in a dim room.\n\nThe paints are matte and water based: sage, sky, butter and lilac. They identify things (a project, an account) and never decorate. Coral is not one of the identity paints; it belongs to a single action, ทำต่อ, so the eye always lands on the next thing to do. State is told twice, by shape as well as colour, so a glance works without colour vision and without reading.\n\nDensity is moderate. The first viewport answers what to do next with three blocks, and everything else sits one nav step away. The world rejects the grey developer dashboard with one accent colour, and it rejects the cream editorial page with serif headlines.",
+    "keyCharacteristics": [
+      "Birch and honey wood by day, walnut wood by night, one walnut ink throughout.",
+      "Four identity paints assigned per project and per account, picked from the name so a colour never moves.",
+      "Coral used for one control only.",
+      "Every piece has a thick rounded edge and a darker block edge under it.",
+      "Every section wears a tag on its top edge.",
+      "Status read by shape first: circle, square, triangle, ring, dashed ring."
+    ],
+    "rules": [
+      {
+        "name": "The One Coral Rule",
+        "body": "Coral appears on the ทำต่อ button only. No other control, chart, badge or warning may use it.",
+        "section": "colors"
+      },
+      {
+        "name": "The Problem Is Not The Button Rule",
+        "body": "Errors and warnings use the alert pair or butter, never coral, so a red-looking thing on screen is never mistaken for the action.",
+        "section": "colors"
+      },
+      {
+        "name": "The Paint Is Identity Rule",
+        "body": "Sage, sky, butter and lilac name a project or an account. Assign them from the name or account index so they stay put between visits; never pick one for looks.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mitr Speaks Rule",
+        "body": "Anything that names, labels or presses is set in Mitr; anything you read is set in Nunito and Looped.",
+        "section": "typography"
+      },
+      {
+        "name": "The Mono Is For Machines Rule",
+        "body": "Monospace appears only on file paths and commands the person will paste. Never on numbers, times or labels; numbers use tabular figures in the text face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Block Edge Rule",
+        "body": "Raised pieces get a solid downward edge in a darker tone of their own surface (3 to 6px) plus a soft blur. Never a grey drop shadow alone, never a black edge, never a sideways offset.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Press Down Rule",
+        "body": "A pressable piece moves down by exactly its edge height when pressed, so it lands on the table.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do keep coral on the ทำต่อ button only.",
+      "Do tell status by shape as well as colour, using the five shapes in Shapes.",
+      "Do put every section in a tagged box with its tag on the top edge.",
+      "Do give raised pieces a solid downward edge in a darker tone of their own surface (3 to 6px) plus a soft blur, and press them down by that height.",
+      "Do assign sage, sky, butter and lilac from the project name or account index so a colour never moves.",
+      "Do use the alert pair for errors and low or waiting accounts, and butter for overlap warnings and low tubes.",
+      "Do keep the dark theme as walnut wood with the same paints dimmed, never pure black.",
+      "Do keep stamped finished work in the list instead of hiding it.",
+      "Do draw icons and disclosure markers as inline SVG or CSS shapes in currentColor."
+    ],
+    "donts": [
+      "Don't use coral for warnings, errors, charts or any second button.",
+      "Don't use a grey dashboard surface with a single accent colour, or a cream editorial page with serif headlines.",
+      "Don't use monospace outside file paths and commands.",
+      "Don't use square corners on surfaces.",
+      "Don't load fonts or images from outside the machine.",
+      "Don't use emoji, middle dots, arrows or em dashes as separators in interface text."
+    ]
+  }
+}

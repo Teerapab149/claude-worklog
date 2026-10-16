@@ -72,6 +72,21 @@ CREATE TABLE IF NOT EXISTS live_edits (
 	cwd TEXT
 );
 CREATE INDEX IF NOT EXISTS live_edits_path ON live_edits(path, ts);
+-- How much of a usage window was used, as a tool last reported it. Codex
+-- writes this into its log; for Claude Code the status line command records
+-- it, and account_uuid is filled from the session when the log names one.
+CREATE TABLE IF NOT EXISTS usage (
+	session_id TEXT NOT NULL,
+	account_uuid TEXT,
+	ts TEXT NOT NULL,
+	window TEXT NOT NULL,
+	used_percent REAL NOT NULL,
+	window_minutes INTEGER,
+	resets_at INTEGER,
+	source TEXT NOT NULL DEFAULT 'log',
+	UNIQUE (session_id, ts, window)
+);
+CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
 -- The hook warns a session once per file, until another session edits it again.
 CREATE TABLE IF NOT EXISTS overlap_warnings (
 	session_id TEXT NOT NULL,
@@ -122,12 +137,26 @@ export function openDb(file) {
 const ADDED_COLUMNS = [
 	['sessions', 'tool', "TEXT NOT NULL DEFAULT 'claude'"],
 	['accounts', 'tool', "TEXT NOT NULL DEFAULT 'claude'"],
+	['usage', 'source', "TEXT NOT NULL DEFAULT 'log'"],
 ];
+
+// One-off steps, each run once per database and remembered in the meta table.
+const STEPS = {
+	// Codex logs read before usage was tracked hold percentages never stored,
+	// so read those files once more from the start. Summaries live elsewhere and stay.
+	'codex-usage': db => db.exec("DELETE FROM scan_state WHERE session_id IN (SELECT id FROM sessions WHERE tool = 'codex')"),
+};
 
 function migrate(db) {
 	for (const [table, column, type] of ADDED_COLUMNS) {
 		const has = db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === column);
 		if (!has) db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+	}
+	db.exec('CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)');
+	for (const [key, step] of Object.entries(STEPS)) {
+		if (db.prepare('SELECT 1 FROM meta WHERE key = ?').get(key)) continue;
+		step(db);
+		db.prepare('INSERT INTO meta (key, value) VALUES (?, ?)').run(key, new Date().toISOString());
 	}
 }
 
@@ -144,6 +173,10 @@ function wrap(db) {
 		deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
 		deleteEdits: db.prepare('DELETE FROM file_edits WHERE session_id = ?'),
 		deleteQuota: db.prepare('DELETE FROM quota_events WHERE session_id = ?'),
+		// Rows the status line wrote are not in the log, so a rescan keeps them.
+		deleteUsage: db.prepare("DELETE FROM usage WHERE session_id = ? AND source = 'log'"),
+		addUsage: db.prepare(`INSERT OR IGNORE INTO usage (session_id, account_uuid, ts, window, used_percent, window_minutes, resets_at, source)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
 		addEdit: db.prepare('INSERT OR IGNORE INTO file_edits (session_id, ts, path, tool) VALUES (?, ?, ?, ?)'),
 		addQuota: db.prepare(`INSERT OR IGNORE INTO quota_events (session_id, ts, status, rate_limit_type, resets_at)
 			VALUES (?, ?, ?, ?, ?)`),
@@ -174,10 +207,13 @@ function wrap(db) {
 			q.deleteSession.run(id);
 			q.deleteEdits.run(id);
 			q.deleteQuota.run(id);
+			q.deleteUsage.run(id);
 		},
 		addEdit: (sessionId, e) => q.addEdit.run(sessionId, e.ts, e.path, e.tool),
 		addQuota: (sessionId, e) => q.addQuota.run(sessionId, e.ts, e.status ?? null, e.rateLimitType ?? null,
 			Number.isFinite(e.resetsAt) ? e.resetsAt : null),
+		addUsage: (sessionId, e) => q.addUsage.run(sessionId, e.account ?? null, e.ts, e.window, e.usedPercent,
+			e.windowMinutes ?? null, e.resetsAt ?? null, e.source ?? 'log'),
 		saveProject: p => q.saveProject.run(p.key, p.name, p.path),
 		saveAccount: (uuid, label, tool = 'claude') => q.saveAccount.run(uuid, label, tool),
 		setSessionAccount: (id, uuid, source) => q.setAccount.run(uuid, source, id),

@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>Worklog | มาตรฐาน</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#F4F5F8;--card:#fff;--ink:#1F2430;--ink-2:#667085;--line:#E4E7EC;--accent:#5B5BD6}
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--bg);color:var(--ink);font:15px/1.6 system-ui,"Noto Sans Thai",sans-serif;display:grid;grid-template-columns:232px 1fr}
+.side{background:var(--card);border-right:1px solid var(--line);padding:20px 12px;display:flex;flex-direction:column;gap:4px}
+.brand{font-weight:600;font-size:18px;padding:8px 12px 20px}
+.nav{padding:8px 12px;border-radius:10px;color:var(--ink-2)}
+.nav.on{background:#EEF0FF;color:var(--accent);font-weight:600}
+main{padding:32px 40px;display:flex;flex-direction:column;gap:24px}
+h1{font-size:26px;font-weight:600}
+.sub{color:var(--ink-2)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.card h3{font-size:17px;font-weight:600}
+.tag{align-self:flex-start;font-size:12px;padding:2px 8px;border-radius:6px;background:#FEF3F2;color:#B42318}
+.tag.g{background:#F2F4F7;color:var(--ink-2)}
+.btn{align-self:flex-start;background:var(--accent);color:#fff;border-radius:8px;padding:8px 16px;font-weight:600}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.row{display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border:0}
+.ok{color:#067647}.warn{color:#B54708}
+</style></head><body>
+<nav class="side"><div class="brand">Worklog</div><div class="nav on">วันนี้</div><div class="nav">โปรเจค</div><div class="nav">บัญชี</div><div class="nav">ตั้งค่า</div></nav>
+<main>
+ <div><h1>วันนี้ทำอะไรต่อดี</h1><p class="sub">สามงานที่ควรหยิบก่อน</p></div>
+ <div class="grid">
+  <div class="card"><h3>Corner Shop</h3><span class="tag">ค้างเพราะติด limit</span><p>ต่อ API ชำระเงินแล้วทดสอบด้วยบัตรทดสอบ</p><span class="btn">ทำต่อ</span></div>
+  <div class="card"><h3>Research</h3><span class="tag g">นำเสนอ 22 ต.ค.</span><p>ไล่ดูตารางหน้า 8 ถึง 12 ให้ตรงกับรายงาน</p><span class="btn">ทำต่อ</span></div>
+  <div class="card"><h3>Notes</h3><span class="tag g">สอบ 19 ต.ค.</span><p>ทำโจทย์ฝึกสามข้อ แล้วดูเฉลยทีละส่วน</p><span class="btn">ทำต่อ</span></div>
+ </div>
+ <div class="two">
+  <div class="card"><h3>บัญชี</h3><div class="row"><span>บัญชีงาน</span><span class="ok">พร้อมใช้</span></div><div class="row"><span>บัญชีส่วนตัว</span><span class="warn">ว่างอีก 2 ชม. 10 นาที</span></div><div class="row"><span>Codex</span><span class="ok">พร้อมใช้</span></div></div>
+  <div class="card"><h3>เปิดอยู่ตอนนี้</h3><div class="row"><span>Corner Shop</span><span>แก้หน้าชำระเงิน</span></div><div class="row"><span>Research</span><span>ปรับตารางสไลด์</span></div><div class="row"><span class="warn">สอง session แก้ checkout.js</span><span>6 นาทีก่อน</span></div></div>
+ </div>
+</main>
+</body></html>

@@ -66,7 +66,7 @@ export const codex = {
 
 	prepare: config => ({ titles: readTitles(config) }),
 
-	apply(s, r, { onEdit = () => {} } = {}, ctx = {}) {
+	apply(s, r, { onEdit = () => {}, onUsage = () => {} } = {}, ctx = {}) {
 		const ts = typeof r.timestamp === 'string' ? r.timestamp : null;
 		if (ts) {
 			if (!s.first_ts || ts < s.first_ts) s.first_ts = ts;
@@ -91,6 +91,7 @@ export const codex = {
 			case 'event_msg':
 				if (p.type === 'thread_settings_applied' && p.thread_settings?.model) s.model = p.thread_settings.model;
 				if (p.type === 'turn_aborted') markEvent(s, 'interrupted', ts);
+				if (p.type === 'token_count' && ts) for (const u of codex.usage(p.rate_limits)) onUsage({ ts, account: CODEX_ACCOUNT, ...u });
 				break;
 		}
 		if (ctx.titles?.has(s.id)) s.custom_title = ctx.titles.get(s.id);
@@ -130,6 +131,61 @@ export const codex = {
 		if (item.type === 'UserMessage') return { role: 'user', ts: r.timestamp, text };
 		if (item.type === 'AgentMessage' && !text.startsWith('[external_agent')) return { role: 'assistant', ts: r.timestamp, text };
 		return null;
+	},
+
+	/**
+	 * The newest usage reading in any Codex log. Usage belongs to the account,
+	 * not to one thread, so this looks past the sessions the indexer keeps (a
+	 * sub-agent or an excluded folder still reports the account's usage). Only
+	 * the tail of the newest files is read, stopping at the first reading.
+	 */
+	latestUsage(files) {
+		const newest = files
+			.map(file => { try { return { file, mtime: fs.statSync(file).mtimeMs }; } catch { return null; } })
+			.filter(Boolean)
+			.sort((a, b) => b.mtime - a.mtime)
+			.slice(0, 15);
+		for (const { file } of newest) {
+			let text;
+			try {
+				const fd = fs.openSync(file, 'r');
+				try {
+					const size = fs.fstatSync(fd).size;
+					const length = Math.min(size, 256 * 1024);
+					const buf = Buffer.alloc(length);
+					fs.readSync(fd, buf, 0, length, size - length);
+					text = buf.toString('utf8');
+				}
+				finally { fs.closeSync(fd); }
+			}
+			catch { continue; }
+			const lines = text.split('\n');
+			for (let i = lines.length - 1; i >= 0; i--) {
+				if (!lines[i].includes('"used_percent"')) continue;
+				try {
+					const r = JSON.parse(lines[i]);
+					const found = codex.usage(r.payload?.rate_limits);
+					if (found.length && typeof r.timestamp === 'string') return found.map(u => ({ ...u, ts: r.timestamp }));
+				}
+				catch { /* the first line of the tail may be cut */ }
+			}
+		}
+		return [];
+	},
+
+	/** The usage windows in a token_count event: primary and, on some plans, secondary. */
+	usage(limits) {
+		if (!limits || typeof limits !== 'object') return [];
+		return ['primary', 'secondary'].flatMap(window => {
+			const w = limits[window];
+			if (!w || !Number.isFinite(w.used_percent)) return [];
+			return [{
+				window,
+				usedPercent: w.used_percent,
+				windowMinutes: Number.isFinite(w.window_minutes) ? w.window_minutes : null,
+				resetsAt: Number.isFinite(w.resets_at) ? w.resets_at * 1000 : null,
+			}];
+		});
 	},
 
 	edits(r) {

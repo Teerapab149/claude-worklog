@@ -5,6 +5,7 @@ import path from 'node:path';
 import { sessionTitle } from './session-state.js';
 import { contentTs, getSummary } from './summaries.js';
 import { howToContinue, recommend } from './recommend.js';
+import { isOurs } from './hook-install.js';
 
 function withSummary(db, kind, ref, newestTs, queue) {
 	const summary = getSummary(db, kind, ref);
@@ -44,11 +45,38 @@ export function accounts(db, config, now = Date.now()) {
 		WHERE s.account_uuid = ? AND q.status = 'rejected' AND q.resets_at > ?
 		GROUP BY q.rate_limit_type`);
 	const nowSec = Math.floor(now / 1000);
+	// The newest reading of each window.
+	const usageQ = db.raw.prepare(`
+		SELECT u.window, u.used_percent, u.window_minutes, u.resets_at, u.ts, u.source
+		FROM usage u LEFT JOIN sessions s ON s.id = u.session_id
+		WHERE COALESCE(u.account_uuid, s.account_uuid) = ?
+		ORDER BY u.ts DESC`);
+	// A window past its reset is full again if the account has not been used
+	// on this machine since then. If it has, the old reading says nothing.
+	const fresh = (u, lastUsed) => {
+		if (!u.resets_at || u.resets_at > now) return u;
+		if (lastUsed && Date.parse(lastUsed) > u.resets_at) return null;
+		return { ...u, used_percent: 0, reset_seen: u.resets_at, resets_at: null };
+	};
 
 	return rows.map((row, i) => {
 		const active = limits.all(row.uuid, nowSec).map(l => ({ type: l.rate_limit_type, resets_at: l.resets_at * 1000, seen_at: l.ts }));
 		active.sort((a, b) => b.resets_at - a.resets_at);
-		return { ...row, color: i, limited: active.length > 0, limits: active };
+		const usage = new Map();
+		for (const u of usageQ.all(row.uuid)) if (!usage.has(u.window)) usage.set(u.window, u);
+		for (const [window, u] of usage) {
+			const f = fresh(u, row.last_ts);
+			if (f) usage.set(window, f);
+			else usage.delete(window);
+		}
+		// A refusal still in force means that window is used up, whatever was read before it.
+		for (const l of active) {
+			const seen = usage.get(l.type);
+			if (!seen || seen.ts < l.seen_at) {
+				usage.set(l.type, { window: l.type, used_percent: 100, window_minutes: null, resets_at: l.resets_at, ts: l.seen_at, source: 'refusal' });
+			}
+		}
+		return { ...row, color: i, limited: active.length > 0, limits: active, usage: [...usage.values()] };
 	});
 }
 
@@ -69,6 +97,8 @@ export function activeSessions(db, config) {
 		try { info = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf8')); }
 		catch { continue; }
 		if (!info.sessionId || !Number.isInteger(info.pid) || !pidAlive(info.pid)) continue;
+		// Worklog's own summarizer runs claude inside its data folder; that is not the person's work.
+		if (info.cwd && path.resolve(info.cwd).toLowerCase().startsWith(config.dataDir.toLowerCase())) continue;
 		const row = lookup.get(info.sessionId);
 		out.push({
 			id: info.sessionId,
@@ -177,4 +207,27 @@ export function nextUp(db, config, now = Date.now()) {
 		items.push({ project: p, latest, summary, deadlines, active: open.has(latest.id) });
 	}
 	return recommend(items, accounts(db, config, now), now);
+}
+
+/** What is set up right now, for the settings page. Nothing secret is included. */
+export function settings(db, config) {
+	let hooks = 0;
+	try {
+		const file = path.join(config.claudeDir, 'settings.json');
+		const groups = Object.values(JSON.parse(fs.readFileSync(file, 'utf8')).hooks ?? {}).flat();
+		hooks = groups.flatMap(g => g.hooks ?? []).filter(isOurs).length;
+	}
+	catch {
+		// No settings file yet, or one that is not JSON: no hooks of ours.
+	}
+	return {
+		roots: config.roots,
+		exclude: config.exclude,
+		accounts: accounts(db, config).map(a => ({ uuid: a.uuid, label: a.label, tool: a.tool, sessions: a.sessions })),
+		sources: { claude: config.claudeDir, codex: config.codexDir },
+		summary: { enabled: config.summary.enabled, model: config.summary.model, autoDays: config.summary.autoDays },
+		overlap: config.overlap,
+		hooksInstalled: hooks,
+		dataDir: config.dataDir,
+	};
 }

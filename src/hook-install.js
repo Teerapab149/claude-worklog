@@ -6,6 +6,7 @@ import { APP_ROOT } from './config.js';
 import { EDIT_TOOLS } from './records.js';
 
 export const HOOK_SCRIPT = path.join(APP_ROOT, 'bin', 'hook.js');
+export const STATUS_SCRIPT = path.join(APP_ROOT, 'bin', 'statusline.js');
 
 const slashes = p => p.replace(/\\/g, '/').toLowerCase();
 const isHookScript = arg => typeof arg === 'string' && slashes(arg) === slashes(HOOK_SCRIPT);
@@ -29,8 +30,21 @@ export function ourHooks(node = process.execPath) {
 	};
 }
 
+/** True for the status line this app installed. */
+export function isOurStatusLine(statusLine) {
+	return typeof statusLine?.command === 'string' && slashes(statusLine.command).includes(slashes(STATUS_SCRIPT));
+}
+
+// The status line takes one command string. Forward slashes and quotes keep
+// a path with spaces whole in Git Bash, which Claude Code uses on Windows.
+function statusLine(node) {
+	const q = p => `"${p.replace(/\\/g, '/')}"`;
+	return { type: 'command', command: q(node) + ' --disable-warning=ExperimentalWarning ' + q(STATUS_SCRIPT), padding: 0 };
+}
+
 export function removeHooks(settings) {
 	const out = structuredClone(settings);
+	if (isOurStatusLine(out.statusLine)) delete out.statusLine;
 	if (!out.hooks) return out;
 	for (const [event, groups] of Object.entries(out.hooks)) {
 		if (!Array.isArray(groups)) continue;
@@ -44,9 +58,13 @@ export function removeHooks(settings) {
 	return out;
 }
 
-/** Installing twice gives the same result as installing once. */
+/**
+ * Installing twice gives the same result as installing once. A status line
+ * the person set up themselves is left alone; usage then comes from Codex only.
+ */
 export function addHooks(settings, node = process.execPath) {
 	const out = removeHooks(settings);
+	if (!out.statusLine) out.statusLine = statusLine(node);
 	out.hooks ??= {};
 	for (const [event, groups] of Object.entries(ourHooks(node))) {
 		out.hooks[event] = [...(out.hooks[event] ?? []), ...groups];

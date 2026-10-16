@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th"><head><meta charset="utf-8"><title>Worklog | แผนที่สวนสัตว์</title>
+<link href="https://fonts.googleapis.com/css2?family=Mitr:wght@400;500;600&family=Nunito:wght@500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--cream:#F5F1E4;--green:#8ED462;--ink:#2C2E2A;--yellow:#F5E211;--coral:#FF705D;--blue:#2BA0FF;--lilac:#EBC1FF}
+*{box-sizing:border-box;margin:0}
+body{width:1440px;height:900px;overflow:hidden;background:var(--cream);color:var(--ink);font:16px/1.55 "Nunito","Mitr",sans-serif;padding:24px;display:grid;grid-template-rows:64px 1fr;gap:16px}
+h1,h2,h3,.m{font-family:"Mitr",sans-serif;font-weight:500}
+.top{display:flex;align-items:center;gap:12px}
+.top .logo{font:600 24px "Mitr";margin-right:24px}
+.cap{font:500 16px "Mitr";padding:8px 20px;border-radius:999px;background:#fff;display:flex;align-items:center;gap:8px}
+.cap.on{background:var(--yellow)}
+.cap i{width:14px;height:14px;border-radius:50%;background:var(--ink)}
+.map{position:relative;display:grid;grid-template-columns:1fr 420px;gap:0}
+.lobe{background:var(--green);border-radius:220px 120px 260px 140px/160px 220px 120px 200px;padding:56px 64px;display:flex;flex-direction:column;gap:24px}
+.lobe h1{font-size:44px;line-height:.95;letter-spacing:-.02em}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.c{background:#fff;border-radius:32px;padding:20px;display:flex;flex-direction:column;gap:8px}
+.c h3{font-size:20px}
+.small{font-size:14px;opacity:.75}
+.btn{align-self:flex-start;font:600 16px "Mitr";background:var(--coral);color:#fff;border-radius:999px;padding:8px 20px;display:flex;align-items:center;gap:8px}
+.btn i{width:12px;height:12px;border-radius:50%;background:#fff}
+.side{display:flex;flex-direction:column;gap:16px;padding:24px 0 0 24px}
+.isle{border-radius:120px 80px 140px 90px/90px 120px 80px 110px;padding:32px 40px}
+.isle h2{font-size:22px;margin-bottom:8px}
+.row{display:flex;justify-content:space-between;gap:8px;padding:4px 0}
+.pill{font:500 13px "Mitr";padding:2px 12px;border-radius:999px;background:#fff}
+</style></head><body>
+<header class="top"><span class="logo">Worklog</span><span class="cap on"><i></i>วันนี้</span><span class="cap"><i></i>โปรเจค</span><span class="cap"><i></i>บัญชี</span><span class="cap"><i></i>ตั้งค่า</span></header>
+<div class="map">
+ <section class="lobe"><h1>วันนี้<br>ทำอะไรต่อดี</h1>
+  <div class="cards">
+   <div class="c"><h3>Corner Shop</h3><span class="small">ค้างเพราะติด limit, ส่งงาน 19 ต.ค.</span><p>ต่อ API ชำระเงินแล้วทดสอบด้วยบัตรทดสอบ</p><span class="btn"><i></i>ทำต่อ</span></div>
+   <div class="c"><h3>Research</h3><span class="small">นำเสนอ 22 ต.ค.</span><p>ไล่ดูตารางหน้า 8 ถึง 12 ให้ตรงกับรายงาน</p><span class="btn"><i></i>ทำต่อ</span></div>
+   <div class="c"><h3>Notes</h3><span class="small">สอบ 19 ต.ค.</span><p>ทำโจทย์ฝึกสามข้อ แล้วดูเฉลยทีละส่วน</p><span class="btn"><i></i>ทำต่อ</span></div>
+  </div></section>
+ <div class="side">
+  <section class="isle" style="background:var(--lilac)"><h2>บัญชี</h2>
+   <div class="row"><span>บัญชีงาน</span><span class="pill">พร้อมใช้</span></div>
+   <div class="row"><span>บัญชีส่วนตัว</span><span class="pill">อีก 2 ชม. 10 นาที</span></div>
+   <div class="row"><span>Codex</span><span class="pill">พร้อมใช้</span></div></section>
+  <section class="isle" style="background:#BFE3FF"><h2>เปิดอยู่ตอนนี้</h2>
+   <div class="row"><span>Corner Shop</span><span class="pill">แก้หน้าชำระเงิน</span></div>
+   <div class="row"><span>Research</span><span class="pill">ปรับตาราง</span></div></section>
+  <section class="isle" style="background:var(--yellow)"><h2>แก้ไฟล์ซ้ำกัน</h2><p class="small">checkout.js ใน Corner Shop ห่างกัน 6 นาที</p></section>
+ </div>
+</div>
+</body></html>

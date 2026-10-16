@@ -54,6 +54,8 @@ This adds three hooks to `~/.claude/settings.json` and backs the file up to `dat
 - `SessionStart`: tells a new session about other sessions open in the same project and gives it the latest project summary.
 - `SessionEnd`: asks the dashboard to read the session that just ended.
 
+The same command also sets Claude Code's status line, unless you already have one. The status line receives how much of the 5-hour and weekly limits is used (Pro and Max accounts only), and Worklog stores it to draw the usage tubes on the accounts page, because Claude Code's logs never record it. Codex writes its usage into its logs already. If you keep your own status line, Worklog leaves it alone, and Claude percentages stay unknown.
+
 Each hook takes about 200 ms. If one fails it writes to `data/hook.log` and never blocks your work. Remove them with `npm run uninstall-hooks`.
 
 ## Privacy
