@@ -94,6 +94,15 @@ CREATE TABLE IF NOT EXISTS overlap_warnings (
 	warned_at TEXT NOT NULL,
 	PRIMARY KEY (session_id, path)
 );
+-- A limit the person marked by hand, because the log only records one when a
+-- request is refused. resets_at is in milliseconds; the mark ends on its own then.
+CREATE TABLE IF NOT EXISTS limit_marks (
+	account_uuid TEXT NOT NULL,
+	window TEXT NOT NULL,
+	resets_at INTEGER NOT NULL,
+	marked_at TEXT NOT NULL,
+	PRIMARY KEY (account_uuid, window)
+);
 CREATE TABLE IF NOT EXISTS quota_events (
 	session_id TEXT NOT NULL,
 	ts TEXT NOT NULL,
@@ -185,6 +194,8 @@ function wrap(db) {
 		saveAccount: db.prepare(`INSERT INTO accounts (uuid, label, tool) VALUES (?, ?, ?)
 			ON CONFLICT(uuid) DO UPDATE SET label = excluded.label, tool = excluded.tool`),
 		setAccount: db.prepare('UPDATE sessions SET account_uuid = ?, account_source = ? WHERE id = ?'),
+		markLimit: db.prepare('INSERT OR REPLACE INTO limit_marks (account_uuid, window, resets_at, marked_at) VALUES (?, ?, ?, ?)'),
+		clearLimits: db.prepare('DELETE FROM limit_marks WHERE account_uuid = ?'),
 	};
 
 	return {
@@ -217,6 +228,8 @@ function wrap(db) {
 		saveProject: p => q.saveProject.run(p.key, p.name, p.path),
 		saveAccount: (uuid, label, tool = 'claude') => q.saveAccount.run(uuid, label, tool),
 		setSessionAccount: (id, uuid, source) => q.setAccount.run(uuid, source, id),
+		markLimit: (uuid, window, resetsAt, markedAt = new Date().toISOString()) => q.markLimit.run(uuid, window, resetsAt, markedAt),
+		clearLimits: uuid => q.clearLimits.run(uuid),
 		allSessions: () => db.prepare('SELECT * FROM sessions').all(),
 	};
 }

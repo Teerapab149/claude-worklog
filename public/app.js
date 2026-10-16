@@ -32,7 +32,12 @@ const ICON = {
 const ESC = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ESC[c]);
 
-async function api(path, options) {
+/** The server only accepts writes that carry JSON, so every non-GET call sends some. */
+async function api(path, { body, ...options } = {}) {
+	if (options.method && options.method !== 'GET') {
+		options.headers = { 'content-type': 'application/json' };
+		options.body = JSON.stringify(body ?? {});
+	}
 	const res = await fetch(path, options);
 	if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
 	return res.json();
@@ -149,15 +154,76 @@ function rod(acct, { detail = false } = {}) {
 	const u = usageOf(acct);
 	const none = u.tubes.length ? '' : `<p class="rod-meta">${detail
 		? (acct.tool === 'claude'
-			? 'ยังไม่มีตัวเลขเปอร์เซ็นต์ จะเริ่มเห็นหลังจากใช้ Claude Code ครั้งถัดไป ถ้าติดตั้ง status line ของ Worklog ไว้ ตอนนี้รู้แค่ว่าไม่ได้ติด limit'
+			? 'แอป Claude ไม่ได้บันทึกว่าใช้ไปกี่เปอร์เซ็นต์ Worklog รู้แค่ตอนที่คำขอถูกปฏิเสธ ถ้าในแอปขึ้นว่าใช้ครบแล้ว ให้บอกไว้ตรงนี้'
 			: 'log ยังไม่ได้บอกว่าใช้ไปเท่าไหร่')
 		: 'ยังไม่มีตัวเลขเปอร์เซ็นต์'}</p>`;
 	return `<div class="rod ${accountPaint(acct.uuid)}">
 		<div class="rod-head"><span class="rod-name">${esc(accountName(acct))}</span><span class="rod-state ${u.state}">${esc(u.text)}</span></div>
 		${u.tubes.map(tube).join('')}${none}
 		${detail ? `<p class="rod-meta">${acct.sessions} session, ใช้ล่าสุด ${esc(ago(acct.last_ts))}</p>` : ''}
+		${detail && acct.tool === 'claude' ? markForm(acct) : ''}
 	</div>`;
 }
+
+// Marking a limit by hand
+
+const MARK_HOURS = { five_hour: 5, seven_day: 7 * 24 };
+const localInput = ms => {
+	const d = new Date(ms);
+	d.setMinutes(d.getMinutes() - d.getTimezoneOffset(), 0, 0);
+	return d.toISOString().slice(0, 16);
+};
+
+/**
+ * The log only knows about a limit once a request is refused, so the person
+ * can say an account is used up, until when, from what the Claude app shows.
+ */
+function markForm(acct) {
+	const marks = acct.limits.filter(l => l.manual);
+	if (marks.length) {
+		const text = marks.map(m => `${LIMIT_NAME[m.type] ?? 'limit'} ถึง ${formatDateTime(m.resets_at)}`).join(' และ ');
+		return `<div class="mark-set"><p class="rod-meta">คุณบอกไว้ว่าติด ${esc(text)} Worklog จะไม่แนะนำบัญชีนี้จนถึงตอนนั้น</p>
+			<button class="btn-copy" type="button" data-unmark="${esc(acct.uuid)}">ใช้ได้แล้ว</button></div>`;
+	}
+	const id = `mark-${esc(acct.uuid)}`;
+	return `<details class="mark"><summary>บอกว่าบัญชีนี้ติด limit</summary>
+		<form class="mark-form" data-mark="${esc(acct.uuid)}">
+			<fieldset class="mark-window"><legend>ช่วงที่ใช้ครบ</legend>
+				<label><input type="radio" name="window" value="seven_day" checked> รายสัปดาห์</label>
+				<label><input type="radio" name="window" value="five_hour"> 5 ชั่วโมง</label>
+			</fieldset>
+			<label class="mark-when" for="${id}">รีเซ็ตตอน
+				<input id="${id}" type="datetime-local" name="resets_at" required value="${localInput(Date.now() + MARK_HOURS.seven_day * 3600000)}"></label>
+			<p class="rod-meta">ดูเวลารีเซ็ตได้ในหน้า Usage ของแอป Claude</p>
+			<div class="mark-actions"><button class="btn-copy" type="submit">บันทึก</button><span class="mark-error" role="status"></span></div>
+		</form></details>`;
+}
+
+app.addEventListener('change', event => {
+	const radio = event.target.closest('.mark-form input[name="window"]');
+	if (!radio) return;
+	const when = radio.form.elements.resets_at;
+	when.value = localInput(Date.now() + MARK_HOURS[radio.value] * 3600000);
+});
+
+app.addEventListener('submit', async event => {
+	const form = event.target.closest('form[data-mark]');
+	if (!form) return;
+	event.preventDefault();
+	const error = form.querySelector('.mark-error');
+	const resetsAt = new Date(form.elements.resets_at.value).getTime();
+	if (!(resetsAt > Date.now())) { error.textContent = 'เวลารีเซ็ตต้องเป็นเวลาข้างหน้า'; return; }
+	try {
+		await api(`/api/accounts/${encodeURIComponent(form.dataset.mark)}/limit`, {
+			method: 'POST', body: { window: form.elements.window.value, resets_at: resetsAt },
+		});
+	}
+	catch (e) {
+		error.textContent = e.status === 400 ? 'เวลานี้ไกลเกินช่วงของ limit นี้' : 'บันทึกไม่สำเร็จ';
+		return;
+	}
+	await route({ quiet: true });
+});
 
 let animateBars = false;
 function releaseBars() {
@@ -609,6 +675,14 @@ app.addEventListener('click', async event => {
 		const base = kind === 'project' ? '/api/projects/' : '/api/sessions/';
 		try { await api(`${base}${encodeURIComponent(ref)}/summarize`, { method: 'POST' }); }
 		catch { trigger.textContent = 'สั่งสรุปไม่สำเร็จ'; return; }
+		await route({ quiet: true });
+		return;
+	}
+	const unmark = event.target.closest('[data-unmark]');
+	if (unmark) {
+		unmark.disabled = true;
+		try { await api(`/api/accounts/${encodeURIComponent(unmark.dataset.unmark)}/limit`, { method: 'DELETE' }); }
+		catch { unmark.disabled = false; unmark.textContent = 'ล้างไม่สำเร็จ'; return; }
 		await route({ quiet: true });
 		return;
 	}

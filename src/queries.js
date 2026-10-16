@@ -59,8 +59,16 @@ export function accounts(db, config, now = Date.now()) {
 		return { ...u, used_percent: 0, reset_seen: u.resets_at, resets_at: null };
 	};
 
+	// Limits the person marked by hand count the same as a refusal until they reset.
+	const marks = db.raw.prepare('SELECT window, resets_at, marked_at FROM limit_marks WHERE account_uuid = ? AND resets_at > ?');
+
 	return rows.map((row, i) => {
 		const active = limits.all(row.uuid, nowSec).map(l => ({ type: l.rate_limit_type, resets_at: l.resets_at * 1000, seen_at: l.ts }));
+		for (const m of marks.all(row.uuid, now)) {
+			const same = active.find(l => l.type === m.window);
+			if (!same) active.push({ type: m.window, resets_at: m.resets_at, seen_at: m.marked_at, manual: true });
+			else if (same.seen_at < m.marked_at) Object.assign(same, { resets_at: m.resets_at, seen_at: m.marked_at, manual: true });
+		}
 		active.sort((a, b) => b.resets_at - a.resets_at);
 		const usage = new Map();
 		for (const u of usageQ.all(row.uuid)) if (!usage.has(u.window)) usage.set(u.window, u);
@@ -73,10 +81,10 @@ export function accounts(db, config, now = Date.now()) {
 		for (const l of active) {
 			const seen = usage.get(l.type);
 			if (!seen || seen.ts < l.seen_at) {
-				usage.set(l.type, { window: l.type, used_percent: 100, window_minutes: null, resets_at: l.resets_at, ts: l.seen_at, source: 'refusal' });
+				usage.set(l.type, { window: l.type, used_percent: 100, window_minutes: null, resets_at: l.resets_at, ts: l.seen_at, source: l.manual ? 'manual' : 'refusal' });
 			}
 		}
-		return { ...row, color: i, limited: active.length > 0, limits: active, usage: [...usage.values()] };
+		return { ...row, color: i, limited: active.length > 0, limits: active, marked: active.some(l => l.manual), usage: [...usage.values()] };
 	});
 }
 

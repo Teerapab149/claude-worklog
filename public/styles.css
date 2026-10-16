@@ -388,6 +388,30 @@ details.group[open] > summary .group-head::after { content: "ซ่อน"; }
 .is-low .tube-left, .is-empty .tube-left { color: var(--alert-ink); }
 .rod-meta { font-size: 13px; color: var(--ink-2); }
 
+/* Marking a limit by hand: a sunk well under the account's tubes. */
+.mark summary {
+	cursor: pointer; width: fit-content; list-style: none; display: inline-flex; align-items: center; gap: 6px;
+	font: 500 14px var(--display); color: var(--ink-2);
+}
+.mark summary::-webkit-details-marker { display: none; }
+.mark summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(-45deg); transition: transform .2s var(--ease); }
+.mark[open] summary::before { transform: rotate(45deg); }
+.mark-form { display: grid; gap: 12px; margin-top: 10px; padding: 14px 16px; border-radius: 16px; background: var(--sunk); }
+.mark-window { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.mark-window legend { font: 500 13px var(--display); color: var(--ink-2); padding: 0; margin-bottom: 6px; }
+.mark-window label { display: inline-flex; align-items: center; gap: 6px; font-size: 14.5px; cursor: pointer; }
+.mark-window input { accent-color: var(--sky-ink); width: 16px; height: 16px; margin: 0; }
+.mark-when { display: grid; gap: 6px; font: 500 13px var(--display); color: var(--ink-2); }
+.mark-when input {
+	width: 100%; max-width: 260px; padding: 8px 14px; border-radius: 999px; border: 2px solid var(--block-line);
+	background: var(--block); color: var(--ink); font: 15px var(--font); font-variant-numeric: tabular-nums;
+}
+.mark-when input:focus { border-color: var(--sky); }
+.mark-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.mark-error { font-size: 13px; color: var(--alert-ink); }
+.mark-set { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; }
+.mark-set p { flex: 1 1 220px; }
+
 .live-list { display: grid; gap: 8px; }
 .live {
 	display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 16px; background: var(--sunk);

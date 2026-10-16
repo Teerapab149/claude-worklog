@@ -20,6 +20,7 @@ const TYPES = {
 	'.ico': 'image/x-icon',
 };
 const ALLOWED_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+const httpError = (status, message) => Object.assign(new Error(message), { status });
 
 /**
  * Keeps count of open pages. Each page holds one event stream open for as
@@ -91,8 +92,29 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 			return data ? { accounts: queries.accounts(db, config), summarizer: queue?.status() ?? null, session: data } : null;
 		}],
 		['POST', /^\/api\/scan$/, () => ({ scan: runScan() })],
+		['POST', /^\/api\/accounts\/([\w-]+)\/limit$/, ([uuid], body) => markLimit(uuid, body)],
+		['DELETE', /^\/api\/accounts\/([\w-]+)\/limit$/, ([uuid]) => {
+			if (!hasAccount(uuid)) return null;
+			db.clearLimits(uuid);
+			return { accounts: queries.accounts(db, config) };
+		}],
 		['GET', /^\/api\/settings$/, () => ({ scan: lastScan, settings: queries.settings(db, config) })],
 	];
+
+	const hasAccount = uuid => Boolean(db.raw.prepare('SELECT 1 FROM accounts WHERE uuid = ?').get(uuid));
+	// The longest a window can still have to run, so a typo cannot park an account for months.
+	const WINDOW_MS = { five_hour: 5 * 3600000, seven_day: 7 * 86400000 };
+
+	function markLimit(uuid, body, now = Date.now()) {
+		if (!hasAccount(uuid)) return null;
+		const resetsAt = Number(body?.resets_at);
+		const longest = WINDOW_MS[body?.window];
+		if (!longest || !Number.isFinite(resetsAt) || resetsAt <= now || resetsAt > now + longest + 3600000) {
+			throw httpError(400, 'bad_limit');
+		}
+		db.markLimit(uuid, body.window, Math.round(resetsAt));
+		return { accounts: queries.accounts(db, config) };
+	}
 
 	function summarize(kind, ref) {
 		if (!queue) return { queued: false, reason: 'disabled' };
@@ -132,7 +154,36 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 		fs.createReadStream(file).pipe(res);
 	}
 
-	function handle(req, res) {
+	// A page on another site can still send a plain form to 127.0.0.1, so a
+	// write must carry JSON (which needs a preflight this server never grants)
+	// and, when the browser names its origin, come from this server.
+	function writeAllowed(req) {
+		if (!/^application\/json\b/i.test(req.headers['content-type'] ?? '')) return false;
+		const origin = req.headers.origin;
+		if (!origin) return true;
+		try { return ALLOWED_HOSTS.has(new URL(origin).hostname); }
+		catch { return false; }
+	}
+
+	function readJson(req) {
+		return new Promise((resolve, reject) => {
+			const chunks = [];
+			let size = 0;
+			req.on('data', chunk => {
+				size += chunk.length;
+				if (size > 65536) { reject(httpError(413, 'too_large')); req.destroy(); }
+				else chunks.push(chunk);
+			});
+			req.on('end', () => {
+				const text = Buffer.concat(chunks).toString('utf8');
+				try { resolve(text ? JSON.parse(text) : {}); }
+				catch { reject(httpError(400, 'bad_json')); }
+			});
+			req.on('error', reject);
+		});
+	}
+
+	async function handle(req, res) {
 		// Refuse requests addressed to any other host name, so a web page
 		// elsewhere cannot reach this server through DNS rebinding.
 		const host = (req.headers.host ?? '').replace(/:\d+$/, '');
@@ -149,17 +200,21 @@ export function createApp({ db, config, queue = null, log = console.log, idle = 
 		for (const [method, pattern, handler] of routes) {
 			const match = url.pathname.match(pattern);
 			if (!match) continue;
-			if (req.method !== method) return sendJson(res, 405, { error: 'method_not_allowed' });
+			if (req.method !== method) continue;
+			if (method !== 'GET' && !writeAllowed(req)) return sendJson(res, 403, { error: 'forbidden' });
 			try {
-				const body = handler(match.slice(1).map(decodeURIComponent));
+				const input = method === 'GET' ? null : await readJson(req);
+				const body = await handler(match.slice(1).map(decodeURIComponent), input);
 				return body ? sendJson(res, 200, body) : sendJson(res, 404, { error: 'not_found' });
 			}
 			catch (error) {
+				if (error.status) return sendJson(res, error.status, { error: error.message });
 				log(`${req.method} ${url.pathname} failed: ${error.stack}`);
 				return sendJson(res, 500, { error: 'internal' });
 			}
 		}
-		sendJson(res, 404, { error: 'not_found' });
+		const known = routes.some(([, pattern]) => pattern.test(url.pathname));
+		sendJson(res, known ? 405 : 404, { error: known ? 'method_not_allowed' : 'not_found' });
 	}
 
 	return { handle, runScan, presence };

@@ -84,3 +84,14 @@ test('the status line is installed only when none is set, and removed cleanly', 
 	assert.deepEqual(addHooks(mine, 'node').statusLine, mine.statusLine);
 	assert.deepEqual(removeHooks(addHooks(mine, 'node')), mine);
 });
+
+test('a limit marked by hand holds until its reset, then lets the account go', () => {
+	const db = setup();
+	db.markLimit('a', 'seven_day', NOW + 3600000, new Date(NOW).toISOString());
+	let acct = accounts(db, config, NOW).find(a => a.uuid === 'a');
+	assert.equal(acct.limited, true);
+	assert.deepEqual(acct.limits.map(l => [l.type, l.manual]), [['seven_day', true]]);
+	acct = accounts(db, config, NOW + 2 * 3600000).find(a => a.uuid === 'a');
+	assert.equal(acct.limited, false);
+	assert.equal(acct.marked, false);
+});

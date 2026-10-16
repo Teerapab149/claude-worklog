@@ -56,6 +56,8 @@ This adds three hooks to `~/.claude/settings.json` and backs the file up to `dat
 
 The same command also sets Claude Code's status line, unless you already have one. The status line receives how much of the 5-hour and weekly limits is used (Pro and Max accounts only), and Worklog stores it to draw the usage tubes on the accounts page, because Claude Code's logs never record it. Codex writes its usage into its logs already. If you keep your own status line, Worklog leaves it alone, and Claude percentages stay unknown.
 
+The status line only runs in Claude Code in a terminal; the Claude desktop app does not call it. If you only use the desktop app, check its Usage page, then on the Worklog accounts page press "บอกว่าบัญชีนี้ติด limit" (mark this account as limited), pick the window (weekly or 5 hours) and when it resets. Worklog stops suggesting that account until then, or until you press "ใช้ได้แล้ว" (available again).
+
 Each hook takes about 200 ms. If one fails it writes to `data/hook.log` and never blocks your work. Remove them with `npm run uninstall-hooks`.
 
 ## Privacy

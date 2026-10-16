@@ -9,6 +9,8 @@ import { openDb } from '../src/db.js';
 import { startServer } from '../src/server.js';
 
 const line = r => JSON.stringify(r) + '\n';
+// The server only takes writes that carry JSON.
+const post = (url, body, method = 'POST') => fetch(url, { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body ?? {}) });
 
 test('API serves overview, project and session, and refuses other hosts', async t => {
 	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-'));
@@ -40,7 +42,7 @@ test('API serves overview, project and session, and refuses other hosts', async 
 	const session = await (await fetch(`${base}/api/sessions/abc`)).json();
 	assert.equal(session.session.last_human_text, 'ทำ MVP');
 
-	const queued = await (await fetch(`${base}/api/sessions/abc/summarize`, { method: 'POST' })).json();
+	const queued = await (await post(`${base}/api/sessions/abc/summarize`)).json();
 	assert.equal(queued.queued, true);
 	let summary;
 	for (let i = 0; i < 100 && !summary?.data; i++) {
@@ -48,7 +50,7 @@ test('API serves overview, project and session, and refuses other hosts', async 
 		summary = (await (await fetch(`${base}/api/sessions/abc`)).json()).session.summary;
 	}
 	assert.equal(summary.data.headline, 'ทำ MVP ค้างเพราะ limit');
-	assert.equal((await fetch(`${base}/api/sessions/nope/summarize`, { method: 'POST' })).status, 404);
+	assert.equal((await post(`${base}/api/sessions/nope/summarize`)).status, 404);
 
 	assert.equal((await fetch(`${base}/api/sessions/nope`)).status, 404);
 	// fetch() will not set Host, so this check goes through node:http.
@@ -77,4 +79,34 @@ test('in app mode the server reports idle once the last page closes', async t =>
 	page.destroy();
 	await new Promise(r => setTimeout(r, 400));
 	assert.equal(idle, 1);
+});
+
+test('an account can be marked as limited by hand and cleared, and writes need JSON from this host', async t => {
+	const claudeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-mark-'));
+	const config = resolveConfig({ claudeDir, codexDir: path.join(claudeDir, 'codex'), summary: { enabled: false } });
+	const db = openDb(':memory:');
+	db.saveAccount('acct-1', 'บัญชีหลัก');
+	const server = await startServer({ db, config, port: 0, log: () => {} });
+	t.after(() => { server.close(); db.close(); fs.rmSync(claudeDir, { recursive: true, force: true }); });
+	const url = `http://127.0.0.1:${server.address().port}/api/accounts/acct-1/limit`;
+	const resetsAt = Date.now() + 2 * 86400000;
+
+	// A plain form post, or one from another site, is refused.
+	assert.equal((await fetch(url, { method: 'POST', body: 'window=seven_day' })).status, 403);
+	const foreign = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://evil.example' }, body: '{}' });
+	assert.equal(foreign.status, 403);
+
+	assert.equal((await post(url, { window: 'five_hour', resets_at: resetsAt })).status, 400);
+	assert.equal((await post(url, { window: 'seven_day', resets_at: Date.now() - 1000 })).status, 400);
+	assert.equal((await post(url.replace('acct-1', 'nobody'), { window: 'seven_day', resets_at: resetsAt })).status, 404);
+
+	const marked = await (await post(url, { window: 'seven_day', resets_at: resetsAt })).json();
+	const acct = marked.accounts.find(a => a.uuid === 'acct-1');
+	assert.equal(acct.limited, true);
+	assert.equal(acct.marked, true);
+	assert.deepEqual(acct.usage.map(u => [u.window, u.used_percent, u.source]), [['seven_day', 100, 'manual']]);
+
+	const cleared = await (await post(url, null, 'DELETE')).json();
+	assert.equal(cleared.accounts.find(a => a.uuid === 'acct-1').limited, false);
+	assert.equal((await fetch(url)).status, 405);
 });
