@@ -33,6 +33,8 @@ const SUMMARY_TROUBLE = {
 		rate_limit: 'API ที่ใช้สรุปให้รอก่อน เพราะเรียกถี่หรือใช้เกินโควต้า Worklog จะลองใหม่เอง',
 	},
 	any: {
+		never_send: 'โฟลเดอร์นี้ตั้งไว้ในหน้าตั้งค่าว่าห้ามส่งให้ AI จึงไม่ได้สรุป',
+		local_only: 'เปิดโหมดสรุปด้วยโปรแกรมในเครื่องเท่านั้นไว้ จึงไม่ส่งออกไปสรุปนอกเครื่อง เลือก Ollama หรือ LM Studio ในหน้าตั้งค่า หรือปิดโหมดนี้',
 		timeout: 'AI ใช้เวลานานเกินไป กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ลองโมเดลที่เร็วกว่าในหน้าตั้งค่า',
 		bad_output: 'AI ตอบกลับมาในรูปแบบที่อ่านไม่ได้ กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ลองเปลี่ยนโมเดลในหน้าตั้งค่า',
 		failed: 'สรุปไม่สำเร็จ กดสรุปใหม่ได้ ถ้ายังเป็นอยู่ ดูรายละเอียดด้านล่างหรือตรวจในหน้าตั้งค่า',
@@ -541,6 +543,8 @@ function keyHelp(preset) {
 	const p = apiPresets[preset];
 	if (!p) return '';
 	if (preset === 'ollama') return 'ติดตั้ง Ollama แล้วโหลดโมเดลที่ต้องการไว้ก่อน ทุกอย่างอยู่ในเครื่องนี้ ไม่มีอะไรส่งออกไป';
+	if (preset === 'lmstudio') return 'เปิด LM Studio โหลดโมเดล แล้วเปิด Local Server ไว้ ทุกอย่างอยู่ในเครื่องนี้ ไม่มีอะไรส่งออกไป';
+	if (preset === 'azure') return 'เปลี่ยนชื่อ resource ในที่อยู่ API เป็นของคุณ และใส่ชื่อ deployment เป็นชื่อโมเดล key เก็บไว้ในเครื่องนี้เท่านั้น';
 	return p.keyUrl ? `ขอ key ได้ที่ <a href="${esc(p.keyUrl)}" target="_blank" rel="noopener noreferrer">${esc(new URL(p.keyUrl).host)}</a> key เก็บไว้ในเครื่องนี้เท่านั้น` : 'key เก็บไว้ในเครื่องนี้เท่านั้น';
 }
 
@@ -620,6 +624,14 @@ app.addEventListener('click', async event => {
 		test.disabled = false;
 	}
 });
+
+/** Today's automatic summaries against the daily limit, in words. */
+function usageLine(s) {
+	if (!s?.today) return 'เมื่อถึงเพดาน Worklog จะหยุดสรุปเองจนถึงพรุ่งนี้ แต่ยังกดสรุปเองได้เสมอ';
+	const calls = s.today.calls ?? 0, tokens = s.today.tokens ?? 0;
+	const tokenText = tokens ? ` ใช้ไปราว ${tokens.toLocaleString('th-TH')} token` : '';
+	return `วันนี้สรุปไปแล้ว ${calls} ครั้ง${tokenText}${s.capped ? ' ถึงเพดานแล้ว จะสรุปเองต่อพรุ่งนี้ แต่ยังกดสรุปเองได้' : ''}`;
+}
 
 const PLAN_NAME = { pro: 'Pro', max: 'Max', team: 'Team', enterprise: 'Enterprise', free: 'Free' };
 
@@ -747,7 +759,7 @@ app.addEventListener('click', async event => {
 });
 
 async function renderSettings() {
-	const { scan, settings: st, editable: ed, canSave, summaryRunning, appInstalled, version, update } = await api('/api/settings');
+	const { scan, settings: st, editable: ed, canSave, summaryRunning, summarizer, appInstalled, version, update } = await api('/api/settings');
 	showScan(scan);
 	const fact = (k, v) => `<div class="fact"><dt>${k}</dt><dd>${v}</dd></div>`;
 	const on = (yes, a, b) => `<span class="pill ${yes ? 'on' : 'off'}">${yes ? a : b}</span>`;
@@ -776,7 +788,7 @@ async function renderSettings() {
 			${summaryRunning || !ed.summary.enabled ? '' : '<p class="field-help">ถ้าเพิ่งเปิด การสรุปจะเริ่มเมื่อปิดหน้าต่าง Worklog แล้วเปิดใหม่</p>'}
 			<fieldset class="choices"><legend class="field-label">ใช้อะไรสรุป</legend>
 				${radio('provider', 'claude', 'Claude Code CLI ใช้โควต้าของบัญชี Claude ที่ login ไว้ในเครื่องนี้', ed.summary.provider === 'claude')}
-				${radio('provider', 'api', 'API แบบ OpenAI เช่น Gemini, Groq, OpenRouter หรือ Ollama ในเครื่อง', ed.summary.provider === 'api')}</fieldset>
+				${radio('provider', 'api', 'API ของผู้ให้บริการ AI ด้วย key ของคุณเอง (Claude, OpenAI, Gemini, Groq และอื่นๆ) หรือโปรแกรมในเครื่องอย่าง Ollama', ed.summary.provider === 'api')}</fieldset>
 			<div class="provider-pane fields" data-provider="claude" ${ed.summary.provider === 'claude' ? '' : 'hidden'}>
 				<div class="how-row"><p class="save-status" id="claude-status" role="status">กำลังตรวจ claude CLI</p>
 					<span class="mark-actions"><button class="btn-copy" type="button" data-claude-login hidden>เข้าสู่ระบบ Claude</button>
@@ -787,6 +799,12 @@ async function renderSettings() {
 			<div class="provider-pane fields" data-provider="api" ${ed.summary.provider === 'api' ? '' : 'hidden'}>${apiFields(ed.summary)}</div>
 			${field('autoDays', 'สรุปเองเฉพาะงานที่มีข้อความใหม่ในกี่วันล่าสุด', `<span class="unit"><input class="input input-num" id="autoDays" name="autoDays" type="number" min="1" max="60" step="1" value="${ed.summary.autoDays}"> วัน</span>`,
 				'งานที่เก่ากว่านี้จะสรุปเมื่อคุณกดปุ่มสรุปในหน้าโปรเจคเท่านั้น')}
+			${field('dailyLimit', 'สรุปเองได้ไม่เกินวันละ', `<span class="unit"><input class="input input-num" id="dailyLimit" name="dailyLimit" type="number" min="1" max="1000" step="1" value="${ed.summary.dailyLimit}"> ครั้ง</span>`,
+				esc(usageLine(summarizer)))}
+			${field('neverSend', 'โฟลเดอร์ที่ห้ามส่งให้ AI', `<textarea class="input mono-input" id="neverSend" name="neverSend" rows="2" spellcheck="false">${esc(ed.summary.neverSend.join('\n'))}</textarea>`,
+				'บรรทัดละหนึ่งโฟลเดอร์ งานในโฟลเดอร์เหล่านี้จะไม่ถูกส่งให้ AI ไม่ว่าจะสรุปเองหรือกดสรุป เหมาะกับงานของลูกค้าหรืองานที่เป็นความลับ')}
+			<label class="switch"><input type="checkbox" name="localOnly" ${ed.summary.localOnly ? 'checked' : ''}><span class="switch-track" aria-hidden="true"></span><span>สรุปด้วยโปรแกรมในเครื่องนี้เท่านั้น</span></label>
+			<p class="field-help">เปิดไว้แล้ว Worklog จะไม่ส่งบทสนทนาออกนอกเครื่องเลย ใช้ได้กับ Ollama หรือ LM Studio ที่ติดตั้งไว้ในเครื่องนี้</p>
 		</div>`)}
 		${box('งานทับซ้อน', `<div class="fields">
 			${field('windowMinutes', 'นับว่าทับกันเมื่อสอง session แก้ไฟล์เดียวกันห่างกันไม่เกิน', `<span class="unit"><input class="input input-num" id="windowMinutes" name="windowMinutes" type="number" min="5" max="240" step="1" value="${ed.overlap.windowMinutes}"> นาที</span>`)}
@@ -834,6 +852,7 @@ app.addEventListener('submit', async event => {
 		accounts: Object.fromEntries([...form.querySelectorAll('[data-account]')].map(i => [i.dataset.account, i.value])),
 		summary: {
 			enabled: el.summaryEnabled.checked, model: el.model.value, autoDays: Number(el.autoDays.value), provider: el.provider.value,
+			dailyLimit: Number(el.dailyLimit.value), neverSend: lines(el.neverSend.value), localOnly: el.localOnly.checked,
 			...(el.provider.value === 'api' ? { api: { ...apiBody(form), clearKey: form.dataset.clearKey === el.apiPreset.value } } : {}),
 		},
 		overlap: { windowMinutes: Number(el.windowMinutes.value), preToolUse: el.preToolUse.value },
@@ -850,7 +869,7 @@ app.addEventListener('submit', async event => {
 			status.className = 'save-status is-error';
 			status.textContent = data.field ? data.error : 'บันทึกไม่สำเร็จ';
 			const target = { roots: el.roots, exclude: el.exclude, autoDays: el.autoDays, windowMinutes: el.windowMinutes,
-				apiBaseUrl: el.apiBaseUrl, apiModel: el.apiModel, apiKey: el.apiKey }[data.field];
+				apiBaseUrl: el.apiBaseUrl, apiModel: el.apiModel, apiKey: el.apiKey, dailyLimit: el.dailyLimit, neverSend: el.neverSend }[data.field];
 			target?.focus();
 			return;
 		}

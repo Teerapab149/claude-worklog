@@ -15,7 +15,15 @@ const SECRET_PATTERNS = [
 	/\bAKIA[0-9A-Z]{16}\b/g,
 	/\beyJ[\w-]{10,}\.[\w-]{10,}\.[\w-]{10,}/g,
 	/\b(Bearer|Basic)\s+[\w.~+/=-]{16,}/gi,
-	/\b((?:api[_-]?key|secret|token|password|passwd|pwd)\s*[:=]\s*)["']?[^\s"']{6,}/gi,
+	/AIza[0-9A-Za-z_-]{35}/g,
+	/\b[rs]k_(?:live|test)_[0-9A-Za-z]{16,}/g,
+	/\b(?:hf|npm|xai|glpat)[_-][0-9A-Za-z_-]{20,}/g,
+	/\bgsk_[0-9A-Za-z]{20,}/g,
+	// A password inside a URL: the scheme and host stay, the user and password go.
+	/(?<=:\/\/)[^\s:@/]+:[^\s@/]+(?=@)/g,
+	// secret: ..., API_KEY=..., GEMINI_API_KEY=..., also names that end in KEY or TOKEN.
+	/((?:^|[^A-Za-z])[A-Za-z0-9_]*(?:api[_-]?key|secret|token|password|passwd|pwd|credentials?|_key|_pass)\s*[:=]\s*)["']?[^\s"']{6,}/gim,
+	/((?:รหัสผ่าน|รหัส)\s*[:=]?\s*)["']?[^\s"']{4,}/g,
 	/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g,
 	// Long random-looking strings. Mixed case plus a digit, and no slash, so
 	// file paths and long English words are left alone.
@@ -58,20 +66,26 @@ export function readConversation(jsonlPath, adapter = claude) {
 const ROLE = { user: 'ผู้ใช้' };
 const END = { rate_limited: 'ติด usage limit', interrupted: 'ผู้ใช้หยุดกลางคัน', replied: 'Claude ตอบแล้ว รอผู้ใช้', no_reply: 'ผู้ใช้ส่งข้อความแล้วยังไม่มีคำตอบ' };
 
-function stamp(ts) {
-	return ts ? new Date(ts).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '';
+// Western calendar, so a deadline the AI works out comes back as a real date
+// (th-TH would write the year as 2569).
+const pad = n => String(n).padStart(2, '0');
+export function stamp(ts) {
+	if (!ts) return '';
+	const d = new Date(ts);
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
  * Builds the digest text. Keeps the first request (it says what the session
  * was for) and then as many of the latest turns as fit in maxChars.
  */
-export function buildDigest(session, { turns, files }, { maxChars = 24000, turnChars = 1500, adapter = claude } = {}) {
+export function buildDigest(session, { turns, files }, { maxChars = 24000, turnChars = 1500, adapter = claude, now = Date.now() } = {}) {
 	const head = [
+		`วันที่สรุป: ${stamp(now).slice(0, 10)} (ค.ศ.)`,
 		`เครื่องมือ: ${adapter.label}`,
 		`โปรเจค: ${session.project_name ?? '-'}`,
 		`โฟลเดอร์: ${session.cwd ?? '-'}`,
-		`ชื่อ session: ${session.custom_title || session.ai_title || '-'}`,
+		`ชื่อ session: ${maskSecrets(session.custom_title || session.ai_title || '-')}`,
 		`ช่วงเวลา: ${stamp(session.first_ts)} ถึง ${stamp(session.last_ts)}`,
 		`สถานะตอนจบ: ${END[session.end_state] ?? 'ไม่ทราบ'}`,
 	];

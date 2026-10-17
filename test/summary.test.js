@@ -117,3 +117,69 @@ test('an auth failure pauses the queue until the person asks again', async () =>
 	db.close();
 	fs.rmSync(claudeDir, { recursive: true, force: true });
 });
+
+test('automatic summaries wait for a quiet session, respect the daily limit and never-send folders', async () => {
+	const { claudeDir, config, db, now } = setup();
+	const calls = [];
+	const run = async ({ input }) => {
+		calls.push(input);
+		return { summary: cleanSummary({ headline: 'ok', status: 'done' }), costUsd: 0, usage: { in: 1000, out: 50 } };
+	};
+	// Still being worked on: the last message was five minutes ago.
+	let queue = createSummaryQueue({ db, config, run, now: () => Date.parse('2026-10-16T01:10:00Z') });
+	assert.equal(queue.enqueueStale(), 0);
+
+	// The folder is on the never-send list: nothing goes out, even when asked.
+	config.summary.neverSend = ['E:/shop'];
+	queue = createSummaryQueue({ db, config, run, now: () => now });
+	assert.equal(queue.enqueueStale(), 0);
+	queue.enqueue('session', 'one', { manual: true });
+	await waitFor(() => queue.idle());
+	assert.equal(calls.length, 0);
+	assert.equal(getSummary(db, 'session', 'one').error_kind, 'never_send');
+
+	// Over the daily limit only what the person asks for runs, and tokens are counted.
+	config.summary.neverSend = [];
+	config.summary.dailyLimit = 1;
+	queue = createSummaryQueue({ db, config, run, now: () => now });
+	assert.equal(queue.status().capped, true);
+	queue.enqueue('session', 'one');
+	await new Promise(r => setTimeout(r, 50));
+	assert.equal(calls.length, 0);
+	queue.enqueue('session', 'one', { manual: true });
+	await waitFor(() => calls.length === 1 && !queue.status().running);
+	assert.ok(queue.status().today.tokens >= 1050);
+	db.close();
+	fs.rmSync(claudeDir, { recursive: true, force: true });
+});
+
+test('a provider that says how long to wait sets the pause', async () => {
+	const { claudeDir, config, db, now } = setup();
+	const run = async () => { throw Object.assign(new Error('slow down'), { kind: 'rate_limit', retryAfterMs: 42000 }); };
+	const queue = createSummaryQueue({ db, config, run, now: () => now });
+	queue.enqueueStale();
+	await waitFor(() => queue.status().paused);
+	assert.equal(queue.status().paused.until, now + 42000);
+	db.close();
+	fs.rmSync(claudeDir, { recursive: true, force: true });
+});
+
+test('maskSecrets hides the key formats people paste, and keeps hosts and paths', () => {
+	// Built here so no file holds anything that looks like a real key.
+	const gemini = `AIza${'Sy0aB1cD2eF3gH4iJ5kL6mN7oP8qR9sT0uV'.slice(0, 35)}`;
+	const stripe = `sk_live_${'4eC39HqLyjWDarjtT1zdp7dc'}`;
+	const cases = [
+		`GEMINI_API_KEY=${gemini}`,
+		`export AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY`,
+		`db at postgres://admin:hunter2pass@db.example.com:5432/app`,
+		`charge with ${stripe}`,
+		'รหัสผ่าน: hunter22',
+	];
+	for (const text of cases) {
+		const masked = maskSecrets(text);
+		assert.match(masked, /\[ซ่อน\]/, text);
+		assert.doesNotMatch(masked, /hunter2|wJalrXUtn|4eC39HqLyj|Sy0aB1cD2e/, text);
+	}
+	assert.match(maskSecrets('postgres://admin:hunter2pass@db.example.com:5432/app'), /postgres:\/\/\[ซ่อน\]@db\.example\.com/);
+	assert.equal(maskSecrets('E:/chatbot/app/components/ProjectWorkspace.js'), 'E:/chatbot/app/components/ProjectWorkspace.js');
+});

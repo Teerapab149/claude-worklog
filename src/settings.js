@@ -5,6 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { suggestRoots } from './setup.js';
+import { keyHint, protectKey } from './secrets.js';
 import { API_PRESETS, apiSettings } from './summarizer.js';
 
 export const MODELS = ['haiku', 'sonnet'];
@@ -34,8 +35,6 @@ export function checkApi(input) {
 	return { preset, baseUrl, model, apiKey };
 }
 
-/** The last four characters, enough to tell keys apart without showing them. */
-const keyHint = key => (key ? key.slice(-4) : null);
 
 /** A mistake the person can fix; the message is shown on the page as is. */
 export class SettingsError extends Error {
@@ -80,6 +79,7 @@ export function editable(db, config) {
 		accounts: accounts.map(a => ({ uuid: a.uuid, label: config.accounts?.[a.uuid] ?? a.label, sessions: a.sessions })),
 		summary: {
 			enabled: config.summary.enabled, model: config.summary.model, autoDays: config.summary.autoDays,
+			dailyLimit: config.summary.dailyLimit ?? 60, neverSend: config.summary.neverSend ?? [], localOnly: Boolean(config.summary.localOnly),
 			provider: config.summary.provider === 'api' ? 'api' : 'claude',
 			api: (({ preset, baseUrl, model }) => ({ preset, baseUrl, model }))(apiSettings(config.summary)),
 			// Keys never leave the server; the page only learns which presets have one.
@@ -130,6 +130,12 @@ export function merge(local, input, knownAccounts) {
 			summary.model = s.model;
 		}
 		if (s.autoDays !== undefined) summary.autoDays = whole('autoDays', s.autoDays, 1, 60, 'วัน');
+		if (s.dailyLimit !== undefined) summary.dailyLimit = whole('dailyLimit', s.dailyLimit, 1, 1000, 'ครั้ง');
+		if (s.neverSend !== undefined) summary.neverSend = folders('neverSend', s.neverSend);
+		if (s.localOnly !== undefined) {
+			if (typeof s.localOnly !== 'boolean') throw new SettingsError('summary', 'รูปแบบการเปิดปิดไม่ถูกต้อง');
+			summary.localOnly = s.localOnly;
+		}
 		if (s.provider !== undefined) {
 			if (!PROVIDERS.includes(s.provider)) throw new SettingsError('summary', 'ไม่รู้จักวิธีสรุปนี้');
 			summary.provider = s.provider;
@@ -142,9 +148,11 @@ export function merge(local, input, knownAccounts) {
 			for (const p of Object.keys(keys)) {
 				if (!keyUrls[p]) keyUrls[p] = local.summary?.api?.preset === p && local.summary.api.baseUrl ? local.summary.api.baseUrl : API_PRESETS[p]?.baseUrl;
 			}
+			// Keys saved as plain text by an older Worklog are encrypted on the next save.
+			for (const p of Object.keys(keys)) if (typeof keys[p] === 'string') keys[p] = protectKey(keys[p]);
 			// An empty key field keeps the key already saved; clearKey removes it.
 			if (s.api.clearKey === true) { delete keys[api.preset]; delete keyUrls[api.preset]; }
-			else if (api.apiKey) { keys[api.preset] = api.apiKey; keyUrls[api.preset] = api.baseUrl; }
+			else if (api.apiKey) { keys[api.preset] = protectKey(api.apiKey); keyUrls[api.preset] = api.baseUrl; }
 			const preset = API_PRESETS[api.preset];
 			summary.api = {
 				preset: api.preset,

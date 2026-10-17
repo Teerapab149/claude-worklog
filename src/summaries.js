@@ -1,12 +1,22 @@
 // Stores AI summaries and works through a queue of sessions and projects
-// that need one, one claude call at a time.
+// that need one, one AI call at a time. Summaries cost the person quota or
+// money, so the automatic ones are rationed: a session is summarized once it
+// has been quiet for a while, a project at most every half hour, at most a
+// handful per scan and a set number per day. Asking from the page skips all
+// of that, except folders the person said must never go to an AI.
 
-import { buildDigest, readConversation } from './digest.js';
-import { PROJECT_PROMPT, SESSION_PROMPT, runSummary, summaryModel } from './summarizer.js';
+import { buildDigest, readConversation, stamp } from './digest.js';
+import { normalizePath } from './projects.js';
+import { PROJECT_PROMPT, SESSION_PROMPT, SummarizerError, digestChars, runSummary, summaryModel } from './summarizer.js';
 import { sessionTitle } from './session-state.js';
 import { adapterFor } from './sources/index.js';
 
-const PAUSE_MS = { auth: 30 * 60 * 1000, rate_limit: 30 * 60 * 1000, missing_cli: 2 * 60 * 1000 };
+// How long the whole queue waits after an error that would fail every call.
+// local_only waits for the person to change the setting or ask again.
+const PAUSE_MS = { auth: 30 * 60 * 1000, rate_limit: 30 * 60 * 1000, missing_cli: 2 * 60 * 1000, local_only: 24 * 3600 * 1000 };
+const IDLE_MS = 15 * 60 * 1000;
+const PROJECT_EVERY_MS = 30 * 60 * 1000;
+const AUTO_PER_SCAN = 20;
 const RETRY_AFTER_ERROR_MS = 60 * 60 * 1000;
 const PROJECT_INPUT_SESSIONS = 8;
 
@@ -29,12 +39,24 @@ export function getSummary(db, kind, ref) {
 	};
 }
 
-function saveSummary(db, kind, ref, { summary, costUsd, sourceTs, model }) {
-	db.raw.prepare(`INSERT INTO summaries (kind, ref, source_ts, json, model, cost_usd, created_at, error, error_kind, error_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
+function saveSummary(db, kind, ref, { summary, costUsd, usage, sourceTs, model }) {
+	db.raw.prepare(`INSERT INTO summaries (kind, ref, source_ts, json, model, cost_usd, tokens_in, tokens_out, created_at, error, error_kind, error_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL)
 		ON CONFLICT(kind, ref) DO UPDATE SET source_ts = excluded.source_ts, json = excluded.json, model = excluded.model,
-			cost_usd = excluded.cost_usd, created_at = excluded.created_at, error = NULL, error_kind = NULL, error_at = NULL`)
-		.run(kind, ref, sourceTs, JSON.stringify(summary), model, costUsd, new Date().toISOString());
+			cost_usd = excluded.cost_usd, tokens_in = excluded.tokens_in, tokens_out = excluded.tokens_out,
+			created_at = excluded.created_at, error = NULL, error_kind = NULL, error_at = NULL`)
+		.run(kind, ref, sourceTs, JSON.stringify(summary), model, costUsd ?? 0, usage?.in ?? null, usage?.out ?? null, new Date().toISOString());
+}
+
+/** Summaries made or tried since local midnight, and the tokens they used. */
+export function todayUse(db, now = Date.now()) {
+	const midnight = new Date(now);
+	midnight.setHours(0, 0, 0, 0);
+	const since = midnight.toISOString();
+	return db.raw.prepare(`SELECT
+		SUM(CASE WHEN created_at >= ? OR error_at >= ? THEN 1 ELSE 0 END) AS calls,
+		SUM(CASE WHEN created_at >= ? THEN COALESCE(tokens_in, 0) + COALESCE(tokens_out, 0) ELSE 0 END) AS tokens
+		FROM summaries`).get(since, since, since);
 }
 
 function saveError(db, kind, ref, error) {
@@ -61,7 +83,7 @@ function projectInput(db, key) {
 		ORDER BY s.last_ts DESC LIMIT ?`).all(key, PROJECT_INPUT_SESSIONS);
 	if (!project || !rows.length) return null;
 
-	const stamp = ts => (ts ? new Date(ts).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) : '-');
+	// Western dates, so deadlines come back as real ones.
 	const lines = [`โปรเจค: ${project.name} (${project.path})`, ''];
 	for (const r of rows) {
 		const s = JSON.parse(r.json);
@@ -88,34 +110,55 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 
 	const keyOf = (kind, ref) => `${kind}:${ref}`;
 
+	/** Folders the person said must never be sent to an AI, matched like exclude. */
+	function neverSend(folder) {
+		if (!folder) return false;
+		const lower = normalizePath(folder).toLowerCase();
+		return (config.summary.neverSend ?? []).some(f => {
+			const prefix = normalizePath(f).toLowerCase();
+			return prefix && (lower === prefix || lower.startsWith(`${prefix}/`));
+		});
+	}
+
 	function enqueue(kind, ref, { manual = false } = {}) {
 		const key = keyOf(kind, ref);
 		// Asking from the page means the person wants to try again now.
 		if (manual) paused = null;
+		const waiting = queue.find(i => i.key === key);
+		if (waiting && manual) waiting.manual = true;
 		if (!queued.has(key) && running?.key !== key) {
 			queued.add(key);
-			const item = { kind, ref, key };
+			const item = { kind, ref, key, manual };
 			if (manual) queue.unshift(item);
 			else queue.push(item);
 		}
 		setImmediate(pump);
 	}
 
+	const capped = () => todayUse(db, now()).calls >= (config.summary.dailyLimit ?? 60);
+
+	const NEVER_SEND = 'โฟลเดอร์นี้ตั้งไว้ในหน้าตั้งค่าว่าห้ามส่งให้ AI จึงไม่ได้สรุป';
+
 	async function summarizeSession(id) {
 		const s = sessionRow(db, id);
 		if (!s) return;
+		if (neverSend(s.cwd)) throw new SummarizerError(NEVER_SEND, 'never_send');
 		const adapter = adapterFor(s.tool);
-		const digest = buildDigest(s, readConversation(s.jsonl_path, adapter), { maxChars: config.summary.maxChars, adapter });
+		const digest = buildDigest(s, readConversation(s.jsonl_path, adapter), { maxChars: digestChars(config.summary), adapter });
 		const out = await run({ system: SESSION_PROMPT, input: digest, config });
 		saveSummary(db, 'session', id, { ...out, sourceTs: contentTs(s), model: summaryModel(config.summary) });
 		if (s.project_key && !s.is_automated) enqueue('project', s.project_key);
 	}
 
-	async function summarizeProject(key) {
+	async function summarizeProject(key, manual) {
+		const path = db.raw.prepare('SELECT path FROM projects WHERE key = ?').get(key)?.path;
+		if (neverSend(path)) throw new SummarizerError(NEVER_SEND, 'never_send');
 		const input = projectInput(db, key);
 		if (!input) return;
 		const current = getSummary(db, 'project', key);
 		if (current?.data && current.source_ts && current.source_ts >= input.sourceTs) return;
+		// A busy project would be summarized after every session; once in a while is enough.
+		if (!manual && current?.created_at && now() - Date.parse(current.created_at) < PROJECT_EVERY_MS) return;
 		const out = await run({ system: PROJECT_PROMPT, input: input.input, config });
 		saveSummary(db, 'project', key, { ...out, sourceTs: input.sourceTs, model: summaryModel(config.summary) });
 	}
@@ -124,12 +167,18 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 		if (running || !queue.length) return;
 		if (paused && paused.until > now()) return;
 		paused = null;
+		// Past the daily limit only what the person asked for runs.
+		if (!queue[0].manual && capped()) {
+			const asked = queue.findIndex(i => i.manual);
+			if (asked < 0) return;
+			queue.unshift(queue.splice(asked, 1)[0]);
+		}
 		const item = queue.shift();
 		queued.delete(item.key);
 		running = item;
 		try {
 			if (item.kind === 'session') await summarizeSession(item.ref);
-			else await summarizeProject(item.ref);
+			else await summarizeProject(item.ref, item.manual);
 			lastError = null;
 		}
 		catch (error) {
@@ -139,7 +188,8 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 			// These stop every later call too, so wait instead of failing each one.
 			// A missing CLI is often the CLI updating itself, so that wait is short.
 			if (PAUSE_MS[error.kind]) {
-				paused = { until: now() + PAUSE_MS[error.kind], kind: error.kind, message: error.message };
+				// A provider that says how long to wait knows better than our guess.
+				paused = { until: now() + (error.retryAfterMs ?? PAUSE_MS[error.kind]), kind: error.kind, message: error.message };
 				queue.unshift(item);
 				queued.add(item.key);
 			}
@@ -156,16 +206,19 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 		if (!config.summary.enabled) return 0;
 		const since = new Date(now() - config.summary.autoDays * 86400000).toISOString();
 		const rows = db.raw.prepare(`
-			SELECT s.id, s.last_human_ts, s.last_assistant_ts, m.source_ts, m.json, m.error_at
+			SELECT s.id, s.cwd, s.last_human_ts, s.last_assistant_ts, m.source_ts, m.json, m.error_at
 			FROM sessions s LEFT JOIN summaries m ON m.kind = 'session' AND m.ref = s.id
 			WHERE s.is_automated = 0 AND s.human_turns > 0
 				AND MAX(COALESCE(s.last_human_ts, ''), COALESCE(s.last_assistant_ts, '')) >= ?
 			ORDER BY MAX(COALESCE(s.last_human_ts, ''), COALESCE(s.last_assistant_ts, '')) DESC`).all(since);
 		let added = 0;
 		for (const r of rows) {
+			if (added >= AUTO_PER_SCAN) break;
 			const fresh = r.json && r.source_ts && r.source_ts >= contentTs(r);
 			const recentError = r.error_at && now() - Date.parse(r.error_at) < RETRY_AFTER_ERROR_MS;
-			if (fresh || recentError || queued.has(keyOf('session', r.id))) continue;
+			// A session still being worked on would be summarized after every message.
+			const active = now() - Date.parse(contentTs(r)) < IDLE_MS;
+			if (fresh || recentError || active || queued.has(keyOf('session', r.id)) || neverSend(r.cwd)) continue;
 			enqueue('session', r.id);
 			added += 1;
 		}
@@ -197,6 +250,9 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 			pending: queue.map(i => ({ kind: i.kind, ref: i.ref })),
 			paused: paused && paused.until > now() ? paused : null,
 			last_error: lastError,
+			today: todayUse(db, now()),
+			dailyLimit: config.summary.dailyLimit ?? 60,
+			capped: capped(),
 		};
 	}
 

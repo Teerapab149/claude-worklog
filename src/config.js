@@ -62,6 +62,12 @@ const DEFAULTS = {
 		// format. api: { preset, baseUrl, model, keys: { preset: key } }, where an
 		// empty baseUrl or model takes the preset's (see API_PRESETS).
 		provider: 'claude',
+		// Automatic summaries per day; asking from the page is never limited.
+		dailyLimit: 60,
+		// Folders whose sessions are never sent to any AI, matched like exclude.
+		neverSend: [],
+		// Only summarize with something running on this machine (Ollama, LM Studio).
+		localOnly: false,
 		api: { preset: 'gemini', baseUrl: '', model: '', keys: {} },
 	},
 	// An installed copy updates itself from GitHub releases when this is on.

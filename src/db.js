@@ -158,13 +158,15 @@ export function openDb(file) {
 // Raise this whenever SCHEMA, ADDED_COLUMNS or STEPS change, or databases
 // that are already open will never see the change. Only ever add tables and
 // columns, so an older Worklog can still open a newer database.
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 // Columns added after the first release, for databases made before them.
 const ADDED_COLUMNS = [
 	['sessions', 'tool', "TEXT NOT NULL DEFAULT 'claude'"],
 	['accounts', 'tool', "TEXT NOT NULL DEFAULT 'claude'"],
 	['usage', 'source', "TEXT NOT NULL DEFAULT 'log'"],
+	['summaries', 'tokens_in', 'INTEGER'],
+	['summaries', 'tokens_out', 'INTEGER'],
 ];
 
 // One-off steps, each run once per database and remembered in the meta table.

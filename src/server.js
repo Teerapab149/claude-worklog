@@ -10,7 +10,7 @@ import { overlaps } from './overlap.js';
 import * as queries from './queries.js';
 import * as settings from './settings.js';
 import { createSummaryQueue } from './summaries.js';
-import { API_PRESETS, claudeLogin, claudeStatus, savedKey, testApi } from './summarizer.js';
+import { API_PRESETS, claudeLogin, claudeStatus, savedKeyFor, testApi } from './summarizer.js';
 import { watchLogs } from './watch.js';
 
 const PUBLIC_DIR = path.join(APP_ROOT, 'public');
@@ -143,7 +143,7 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		['POST', /^\/api\/summary\/test$/, async (_, body) => {
 			const api = settings.checkApi(body);
 			// The saved key is used only for the address it belongs to; anywhere else needs the key typed in.
-			const saved = savedKey(config.summary, api.preset, api.baseUrl);
+			const saved = savedKeyFor(config.summary, api.preset, api.baseUrl, { defaultBaseUrl: API_PRESETS[api.preset].baseUrl });
 			return testApi({ ...api, apiKey: api.apiKey || saved, needsKey: API_PRESETS[api.preset].needsKey });
 		}],
 		['POST', /^\/api\/update\/install$/, () => {
@@ -181,6 +181,7 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 			canSave: Boolean(configFile),
 			// Turning summaries on needs a restart, because the queue is made at start.
 			summaryRunning: Boolean(queue),
+			summarizer: queue?.status() ?? null,
 			appInstalled: appInstalled ? appInstalled() : null,
 			version: VERSION,
 			update: updater ? { ...updater.status(), auto: config.updates.auto, canInstallNow: Boolean(onInstallNow) } : null,
