@@ -86,3 +86,25 @@ test('a log that breaks the reader is skipped and counted, and the rest is still
 	db.close();
 	fs.rmSync(claudeDir, { recursive: true, force: true });
 });
+
+test('a damaged database is moved aside and replaced, keeping what can still be read', async () => {
+	const { openDbChecked } = await import('../src/db.js');
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-damaged-'));
+	const file = path.join(dir, 'index.db');
+
+	// A healthy database opens as it is.
+	let { db, recovered } = openDbChecked(file);
+	assert.equal(recovered, null);
+	db.raw.prepare("INSERT INTO summaries (kind, ref, json, created_at) VALUES ('session', 's1', ?, '2026-10-16')").run(JSON.stringify({ headline: 'ok', status: 'done' }));
+	db.close();
+
+	// Not a database at all any more.
+	fs.writeFileSync(file, Buffer.alloc(8192, 7));
+	({ db, recovered } = openDbChecked(file, { log: () => {} }));
+	assert.ok(recovered);
+	assert.ok(fs.existsSync(recovered.aside));
+	assert.equal(db.raw.prepare('PRAGMA quick_check').get().quick_check, 'ok');
+	assert.equal(db.raw.prepare('SELECT COUNT(*) AS n FROM sessions').get().n, 0);
+	db.close();
+	fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -17,7 +17,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { appBrowser, focusWindow, installedAppId, profileWindowPid, setupRunning, windowArgs } from '../src/app-window.js';
 import { INSTALLED, VERSION, WORK_HOME, configFile, loadConfig, resolveConfig } from '../src/config.js';
-import { openDb } from '../src/db.js';
+import { openDbChecked } from '../src/db.js';
 import { pingWorklog, readPort, savePort } from '../src/port.js';
 import { startServer } from '../src/server.js';
 import { createUpdater } from '../src/update.js';
@@ -133,7 +133,10 @@ if (running) {
 	process.exit(0);
 }
 
-const db = openDb(path.join(dataDir, 'index.db'));
+const { db, recovered } = openDbChecked(path.join(dataDir, 'index.db'), { log });
+const recoveredNote = recovered
+	? `ฐานข้อมูลเดิมของ Worklog เสีย จึงสร้างใหม่และกู้สรุปมาได้ ${recovered.kept.summaries ?? 0} รายการ งานทั้งหมดจะกลับมาเมื่ออ่าน log เสร็จ`
+	: null;
 function shutdown({ install = 'onExit' } = {}) {
 	log('ปิดหน้าต่างแอปแล้ว ปิดเซิร์ฟเวอร์ตาม');
 	closeBrowser();
@@ -150,7 +153,7 @@ function shutdown({ install = 'onExit' } = {}) {
 for (let attempt = 0; attempt < 20 && !server; attempt++) {
 	try {
 		server = await startServer({
-			db, config, configFile: configFile(), configWarning, updater, port, log,
+			db, config, configFile: configFile(), configWarning: [configWarning, recoveredNote].filter(Boolean).join(' ') || null, updater, port, log,
 			appInstalled: () => Boolean(installedAppId(profile)),
 			// The settings page's "ติดตั้งตอนนี้": answer first, then close and run setup.
 			onInstallNow: () => setTimeout(() => shutdown({ install: 'now' }), 500),

@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { configFile, loadConfig } from '../src/config.js';
-import { openDb } from '../src/db.js';
+import { openDbChecked } from '../src/db.js';
 import { startServer } from '../src/server.js';
 
 const config = loadConfig();
@@ -21,7 +21,7 @@ if (process.argv.includes('--log')) {
 	process.on('uncaughtException', error => { log(`crashed: ${error.stack}`); process.exit(1); });
 }
 
-const db = openDb(path.join(config.dataDir, 'index.db'));
+const { db } = openDbChecked(path.join(config.dataDir, 'index.db'), { log });
 try {
 	const server = await startServer({ db, config, configFile: configFile(), port, log });
 	log(`เปิดหน้าเว็บได้ที่ http://localhost:${server.address().port}`);

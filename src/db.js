@@ -253,3 +253,101 @@ function wrap(db) {
 		allSessions: () => db.prepare('SELECT * FROM sessions').all(),
 	};
 }
+
+// What a damaged database still holds that the logs cannot give back:
+// summaries (which cost quota to make again) and limits the person marked.
+const SALVAGE = {
+	summaries: row => (row.kind === 'session' || row.kind === 'project') && typeof row.ref === 'string'
+		&& (row.json === null || (() => { try { return typeof JSON.parse(row.json).headline === 'string'; } catch { return false; } })()),
+	limit_marks: row => typeof row.account_uuid === 'string' && Number.isFinite(row.resets_at),
+};
+
+/**
+ * Every row of a table that can still be read, in rowid order. A damaged
+ * page stops a plain SELECT halfway, so reading starts again past the bad
+ * stretch until too many attempts fail in a row.
+ */
+function readAround(db, table) {
+	const rows = [];
+	let stmt;
+	try { stmt = db.prepare(`SELECT rowid AS _rowid, * FROM ${table} WHERE rowid > ? ORDER BY rowid`); }
+	catch { return rows; }
+	let after = 0, misses = 0;
+	while (misses < 200) {
+		try {
+			for (const row of stmt.iterate(after)) {
+				after = row._rowid;
+				misses = 0;
+				rows.push(row);
+			}
+			break;
+		}
+		catch {
+			// Skip about a page worth of rows and try again.
+			after += 32;
+			misses += 1;
+		}
+	}
+	return rows;
+}
+
+/**
+ * Opens the database for the app and the server, which run long enough for
+ * a check to be worth it. Everything in it except summaries and marked
+ * limits is rebuilt from the logs, so a damaged file is never a reason not
+ * to start: it is moved aside, whatever can still be read is carried over,
+ * and the next scan fills in the rest. Returns { db, recovered }.
+ */
+export function openDbChecked(file, { log = () => {} } = {}) {
+	let problem = null;
+	try {
+		const probe = new DatabaseSync(file);
+		try {
+			const result = probe.prepare('PRAGMA quick_check(1)').get();
+			if (Object.values(result)[0] !== 'ok') problem = Object.values(result)[0];
+		}
+		finally { probe.close(); }
+	}
+	catch (error) {
+		problem = error.message;
+	}
+	if (!problem) {
+		const db = openDb(file);
+		// Fold the write-ahead log back in now and then, so it does not grow without end.
+		try { db.raw.exec('PRAGMA wal_checkpoint(TRUNCATE)'); }
+		catch { /* busy with a hook: next time */ }
+		return { db, recovered: null };
+	}
+
+	const aside = `${file}.damaged-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+	log(`ฐานข้อมูลเสีย (${String(problem).slice(0, 200)}) ย้ายไปไว้ที่ ${aside} แล้วสร้างใหม่จาก log`);
+	for (const suffix of ['', '-wal', '-shm']) {
+		if (fs.existsSync(file + suffix)) fs.renameSync(file + suffix, aside + suffix);
+	}
+	const db = openDb(file);
+	const kept = {};
+	let old = null;
+	try {
+		// Not read-only: SQLite has to replay the moved write-ahead log to read it.
+		old = new DatabaseSync(aside);
+		for (const [table, valid] of Object.entries(SALVAGE)) {
+			kept[table] = 0;
+			const rows = readAround(old, table);
+			const columns = db.raw.prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
+			const insert = db.raw.prepare(`INSERT OR IGNORE INTO ${table} (${columns.join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`);
+			for (const row of rows) {
+				if (!valid(row)) continue;
+				try { kept[table] += Number(insert.run(...columns.map(c => row[c] ?? null)).changes); }
+				catch { /* a row that does not fit is left behind */ }
+			}
+		}
+	}
+	catch (error) {
+		log(`อ่านข้อมูลจากฐานข้อมูลเดิมไม่ได้เลย (${error.message}) เริ่มใหม่ทั้งหมด`);
+	}
+	finally {
+		old?.close();
+	}
+	log(`กู้สรุปได้ ${kept.summaries ?? 0} รายการ และ limit ที่บอกไว้ ${kept.limit_marks ?? 0} รายการ`);
+	return { db, recovered: { aside, kept } };
+}
