@@ -26,7 +26,7 @@ test('an OpenAI-style call asks for the schema, sends the key the way the provid
 	let sent;
 	const fetch = async (url, init) => {
 		sent = { url, headers: init.headers, body: JSON.parse(init.body) };
-		return chat('```json\n' + JSON.stringify({ ...SUMMARY, headline: 'ทำหน้า A — **เสร็จ**', done: ['1', '2', '3', '4', '5', '6', '7', '8'] }) + '\n```');
+		return chat('```json\n' + JSON.stringify({ ...SUMMARY, headline: 'ทำหน้า A \u2014 **เสร็จ**', done: ['1', '2', '3', '4', '5', '6', '7', '8'] }) + '\n```');
 	};
 	const out = await runApi({ system: 'S', input: 'I', config: apiConfig('gemini'), fetch, sleep: noSleep });
 	assert.equal(sent.url, 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions');

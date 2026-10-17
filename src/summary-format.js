@@ -46,10 +46,10 @@ export function portableSchema(schema = SUMMARY_SCHEMA) {
 // Characters and habits the person never wants to see in generated text,
 // written as escapes so this file stays free of them too.
 const REPLACEMENTS = [
-	[/\s*[—–]\s*/g, ', '],
-	[/\s*·\s*/g, ', '],
-	[/\s*→\s*/g, ' แล้ว '],
-	[/\s*←\s*/g, ' จาก '],
+	[/\s*[\u2014\u2013]\s*/g, ', '],
+	[/\s*\u00B7\s*/g, ', '],
+	[/\s*\u2192\s*/g, ' แล้ว '],
+	[/\s*\u2190\s*/g, ' จาก '],
 	[/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, ''],
 	// "+" standing for "and" between words; a plus inside code or numbers stays.
 	[/(?<=[\p{L}\p{M})])\s+\+\s+(?=[\p{L}(])/gu, ' และ '],
