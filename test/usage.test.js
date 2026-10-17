@@ -110,3 +110,13 @@ test('hooks from another copy of Worklog are replaced, not run twice, and other 
 	assert.ok(!out.statusLine.command.includes('D:/old'));
 	assert.deepEqual(removeHooks(out).hooks.PreToolUse[0].hooks.map(h => h.args[1]), ['lint']);
 });
+
+test('the 5-hour window is estimated from use when no reading says otherwise', () => {
+	const db = setup();
+	// s1 ran 09:00 to 11:00; at 12:00 the window started at 09:00 and ends at 14:00.
+	const acct = accounts(db, config, NOW).find(a => a.uuid === 'a');
+	assert.deepEqual(acct.window5h, { startedAt: Date.parse('2026-10-16T09:00:00Z'), resetsAt: Date.parse('2026-10-16T14:00:00Z') });
+	assert.equal(acct.used5h, 1);
+	// Long after, there is no current window to guess.
+	assert.equal(accounts(db, config, NOW + 10 * 3600000).find(a => a.uuid === 'a').window5h, null);
+});

@@ -177,13 +177,36 @@ function rod(acct, { detail = false } = {}) {
 			? 'แอป Claude ไม่ได้บันทึกว่าใช้ไปกี่เปอร์เซ็นต์ Worklog รู้แค่ตอนที่คำขอถูกปฏิเสธ ถ้าในแอปขึ้นว่าใช้ครบแล้ว ให้บอกไว้ตรงนี้'
 			: 'log ยังไม่ได้บอกว่าใช้ไปเท่าไหร่')
 		: 'ยังไม่มีตัวเลขเปอร์เซ็นต์'}</p>`;
+	// The 5-hour window guessed from when the account was used, for accounts with no real reading.
+	const w = acct.window5h && !acct.limited
+		? `<p class="rod-meta">รอบ 5 ชั่วโมงนี้เริ่มราว ${esc(formatTime(acct.window5h.startedAt))} รีเซ็ตราว ${esc(formatTime(acct.window5h.resetsAt))} (ประมาณจากเวลาที่ใช้)</p>` : '';
+	// One tap when the Claude app says the 5-hour limit is reached; weekly limits are marked on the accounts page.
+	const quick = !detail && acct.tool === 'claude' && !acct.limited
+		? `<div class="rod-quick"><button class="btn-copy" type="button" data-quick-limit="${esc(acct.uuid)}" data-resets="${acct.window5h?.resetsAt ?? ''}">ติด limit 5 ชั่วโมง</button>
+			<a class="rod-meta" href="#/accounts">ติดรายสัปดาห์</a></div>` : '';
 	return `<div class="rod ${accountPaint(acct.uuid)}">
 		<div class="rod-head"><span class="rod-name">${esc(accountName(acct))}</span><span class="rod-state ${u.state}">${esc(u.text)}</span></div>
-		${u.tubes.map(tube).join('')}${none}
+		${u.tubes.map(tube).join('')}${none}${w}
 		${detail ? `<p class="rod-meta">${acct.sessions} session, ใช้ล่าสุด ${esc(ago(acct.last_ts))}</p>` : ''}
-		${detail && acct.tool === 'claude' ? markForm(acct) : ''}
+		${detail && acct.tool === 'claude' ? markForm(acct) : quick}
 	</div>`;
 }
+
+app.addEventListener('click', async event => {
+	const button = event.target.closest('[data-quick-limit]');
+	if (!button) return;
+	button.disabled = true;
+	// Without an estimate the window is taken to end five hours from now.
+	const resetsAt = Number(button.dataset.resets) > Date.now() ? Number(button.dataset.resets) : Date.now() + 5 * 3600 * 1000;
+	try {
+		await api(`/api/accounts/${encodeURIComponent(button.dataset.quickLimit)}/limit`, { method: 'POST', body: { window: 'five_hour', resets_at: resetsAt } });
+		await route({ quiet: true });
+	}
+	catch {
+		button.disabled = false;
+		button.textContent = 'บันทึกไม่สำเร็จ';
+	}
+});
 
 // Marking a limit by hand
 

@@ -88,3 +88,14 @@ test('a change of account is flagged so the prompt can lead', () => {
 	assert.equal(item.continue.via, 'app');
 	assert.equal(recommend([{ ...items[0], latest: session({ entrypoint: 'claude-desktop' }) }], [A, B], NOW)[0].switched, false);
 });
+
+test('account advice is honest without a reading and spreads work across free accounts', async () => {
+	const { suggestAccount } = await import('../src/recommend.js');
+	const latest = { tool: 'claude', account_uuid: 'a' };
+	const acct = (uuid, extra = {}) => ({ uuid, label: uuid, tool: 'claude', limited: false, limits: [], usage: [], used5h: 0, ...extra });
+	assert.match(suggestAccount(latest, [acct('a')]).note, /ยังไม่เห็นว่าติด limit/);
+	assert.match(suggestAccount(latest, [acct('a', { usage: [{ used_percent: 30 }] })]).note, /เหลือ 70%/);
+	// a is limited; of b and c, c was used less in the last five hours.
+	const limited = acct('a', { limited: true, limits: [{ resets_at: Date.now() + 3600000 }] });
+	assert.equal(suggestAccount(latest, [limited, acct('b', { used5h: 4 }), acct('c', { used5h: 1 })]).uuid, 'c');
+});

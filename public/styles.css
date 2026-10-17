@@ -387,6 +387,8 @@ details.group[open] > summary .group-head::after { content: "ซ่อน"; }
 .is-low .tube-fill { background: var(--butter); }
 .is-low .tube-left, .is-empty .tube-left { color: var(--alert-ink); }
 .rod-meta { font-size: 13px; color: var(--ink-2); }
+.rod-quick { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.rod-quick a { text-decoration: underline; text-underline-offset: 3px; }
 
 /* Marking a limit by hand: a sunk well under the account's tubes. */
 .mark summary {

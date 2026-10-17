@@ -26,6 +26,8 @@ function shapeSession(row) {
 }
 
 /** Accounts in config order first, then any others, each with a stable color slot. */
+const FIVE_HOURS = 5 * 3600 * 1000;
+
 export function accounts(db, config, now = Date.now()) {
 	const rows = db.raw.prepare(`
 		SELECT a.uuid, a.label, a.tool, COUNT(s.id) AS sessions, MAX(s.last_ts) AS last_ts
@@ -59,6 +61,9 @@ export function accounts(db, config, now = Date.now()) {
 		return { ...u, used_percent: 0, reset_seen: u.resets_at, resets_at: null };
 	};
 
+	// Sessions active in the last five hours, for spreading work across accounts.
+	const recentQ = db.raw.prepare(`SELECT first_ts, last_ts FROM sessions
+		WHERE account_uuid = ? AND is_automated = 0 AND last_ts >= ? AND first_ts IS NOT NULL`);
 	// Limits the person marked by hand count the same as a refusal until they reset.
 	const marks = db.raw.prepare('SELECT window, resets_at, marked_at FROM limit_marks WHERE account_uuid = ? AND resets_at > ?');
 
@@ -84,7 +89,21 @@ export function accounts(db, config, now = Date.now()) {
 				usage.set(l.type, { window: l.type, used_percent: 100, window_minutes: null, resets_at: l.resets_at, ts: l.seen_at, source: l.manual ? 'manual' : 'refusal' });
 			}
 		}
-		return { ...row, color: i, limited: active.length > 0, limits: active, marked: active.some(l => l.manual), usage: [...usage.values()] };
+		const recent = recentQ.all(row.uuid, new Date(now - FIVE_HOURS).toISOString());
+		// The Claude desktop app never says how much of the 5-hour window is
+		// used. Its start can still be guessed: the earliest activity in the
+		// last five hours. Shown as an estimate, and only without a real reading.
+		let window5h = null;
+		// A session that began more than five hours ago hides where the window
+		// turned over, so then nothing is guessed rather than a wrong time.
+		if (row.tool === 'claude' && recent.length && !usage.has('five_hour')) {
+			const started = Math.min(...recent.map(r => Date.parse(r.first_ts)));
+			if (started >= now - FIVE_HOURS) window5h = { startedAt: started, resetsAt: started + FIVE_HOURS };
+		}
+		return {
+			...row, color: i, limited: active.length > 0, limits: active, marked: active.some(l => l.manual),
+			usage: [...usage.values()], used5h: recent.length, window5h,
+		};
 	});
 }
 
@@ -207,7 +226,11 @@ export function nextUp(db, config, now = Date.now()) {
 		const row = latestQ.get(p.key);
 		if (!row) continue;
 		const latest = shapeSession(row);
-		const summary = getSummary(db, 'project', p.key)?.data ?? getSummary(db, 'session', latest.id)?.data ?? null;
+		// Whichever is newer: a project summary written before the latest
+		// session can still call the project done after new work started.
+		const own = getSummary(db, 'project', p.key), last = getSummary(db, 'session', latest.id);
+		const pick = own?.data && last?.data ? ((own.source_ts ?? '') >= (last.source_ts ?? '') ? own : last) : (own?.data ? own : last);
+		const summary = pick?.data ?? null;
 		const deadlines = [
 			...(summary?.deadlines ?? []),
 			...recentQ.all(p.key, since).flatMap(r => JSON.parse(r.json).deadlines ?? []),

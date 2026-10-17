@@ -58,9 +58,20 @@ export function suggestAccount(latest, accounts) {
 		return { uuid: latest.account_uuid, note: `ทำต่อใน ${acct ? nameOf(acct) : latest.tool}` };
 	}
 	const claude = accounts.filter(a => a.tool === 'claude');
-	const free = claude.filter(a => !a.limited);
+	// Among free accounts, the one with the most left when that is known,
+	// otherwise the one used least in the last five hours.
+	const headroom = a => (a.usage?.length ? Math.min(...a.usage.map(u => 100 - u.used_percent)) : null);
+	const free = claude.filter(a => !a.limited).sort((a, b) =>
+		(headroom(b) ?? 50) - (headroom(a) ?? 50) || (a.used5h ?? 0) - (b.used5h ?? 0));
 	const last = claude.find(a => a.uuid === latest.account_uuid);
-	if (last && !last.limited) return { uuid: last.uuid, note: `ใช้ ${nameOf(last)} ต่อได้เลย เป็นบัญชีเดิมที่ทำงานนี้` };
+	if (last && !last.limited) {
+		// Without a reading, all Worklog knows is that no request was refused yet.
+		const known = headroom(last);
+		const note = known === null
+			? `ใช้ ${nameOf(last)} ต่อได้ เป็นบัญชีเดิมที่ทำงานนี้ ยังไม่เห็นว่าติด limit`
+			: `ใช้ ${nameOf(last)} ต่อได้เลย เป็นบัญชีเดิมที่ทำงานนี้ เหลือ ${Math.round(known)}%`;
+		return { uuid: last.uuid, note };
+	}
 	if (free.length) {
 		const why = last ? `${nameOf(last)} ติด limit ถึง ${thaiDateTime(freeAt(last))}` : 'ไม่รู้ว่าครั้งก่อนใช้บัญชีไหน';
 		return { uuid: free[0].uuid, note: `ใช้ ${nameOf(free[0])} เพราะ ${why}` };
