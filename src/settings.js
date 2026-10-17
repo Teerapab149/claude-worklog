@@ -66,6 +66,13 @@ function whole(field, value, min, max, unit) {
 	return n;
 }
 
+/** When an account was last used and on which projects, so a person can tell their accounts apart. */
+function recentUse(db, uuid) {
+	const projects = db.raw.prepare(`SELECT p.name, MAX(s.last_ts) AS last FROM sessions s JOIN projects p ON p.key = s.project_key
+		WHERE s.account_uuid = ? AND s.is_automated = 0 GROUP BY p.key ORDER BY last DESC LIMIT 3`).all(uuid);
+	return { lastTs: projects[0]?.last ?? null, recentProjects: projects.map(p => p.name) };
+}
+
 /** What the page shows and edits. */
 export function editable(db, config) {
 	const cwds = db.raw.prepare('SELECT cwd FROM sessions WHERE is_automated = 0').all().map(r => r.cwd);
@@ -76,7 +83,10 @@ export function editable(db, config) {
 		roots: config.roots,
 		suggestedRoots: suggestRoots(cwds),
 		exclude: config.exclude,
-		accounts: accounts.map(a => ({ uuid: a.uuid, label: config.accounts?.[a.uuid] ?? a.label, sessions: a.sessions })),
+		accounts: accounts.map(a => ({
+			uuid: a.uuid, label: config.accounts?.[a.uuid] ?? a.label, sessions: a.sessions,
+			...recentUse(db, a.uuid),
+		})),
 		summary: {
 			enabled: config.summary.enabled, model: config.summary.model, autoDays: config.summary.autoDays,
 			dailyLimit: config.summary.dailyLimit ?? 60, neverSend: config.summary.neverSend ?? [], localOnly: Boolean(config.summary.localOnly),

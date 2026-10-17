@@ -55,7 +55,12 @@ for (const { uuid, n } of found) {
 ask?.close();
 db.close();
 
+// The installer runs this with --defaults and nobody has chosen anything yet;
+// the setup page in Worklog asks the rest the first time it opens. A setup
+// already finished stays finished.
 const out = { ...local, roots, accounts };
+if (!interactive && local.setup !== 'done' && !fs.existsSync(file)) out.setup = 'pending';
+if (interactive) out.setup = 'done';
 writeLocalConfig(out, file);
 console.log(`\nบันทึกแล้วที่ ${file}`);
 

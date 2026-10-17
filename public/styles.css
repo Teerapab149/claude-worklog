@@ -516,6 +516,8 @@ textarea.input { resize: vertical; min-height: 64px; }
 .choice { display: flex; align-items: flex-start; gap: 10px; padding: 10px 14px; border-radius: 16px; background: var(--sunk); cursor: pointer; max-width: 640px; }
 .choice input { accent-color: var(--sky-ink); width: 16px; height: 16px; margin: 4px 0 0; flex: none; }
 .choice:has(input:checked) { box-shadow: inset 0 0 0 2px var(--sky); }
+.choice-title { font: 500 15px var(--display); }
+.choice-extra { padding: 0 14px 4px 40px; }
 .switch { display: inline-flex; align-items: center; gap: 12px; cursor: pointer; font: 500 15px var(--display); }
 .switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
 .switch-track {

@@ -409,8 +409,21 @@ function mini(item) {
 		<span class="mini-sub">${esc(item.reasons[0] ?? item.cautions[0] ?? ago(item.latest.last_ts))}</span></a>`;
 }
 
+/** Why the list is empty: nothing read yet, no logs at all, or really nothing left to do. */
+function emptyToday(data) {
+	if (!data.scan) return 'กำลังอ่าน log ครั้งแรก รอสักครู่';
+	if (!data.scan.stats?.files) return 'ยังไม่เจอ log ของ Claude Code หรือ Codex ในเครื่องนี้ ลองใช้ Claude Code หรือ Codex ทำงานสักครั้ง แล้วงานจะขึ้นที่นี่ แชทธรรมดาในแอป Claude ไม่ถูกนับ';
+	if (!data.projects?.length) return 'อ่าน log แล้วแต่ยังไม่มีงาน ลองตรวจโฟลเดอร์ที่ไม่นับในหน้าตั้งค่า';
+	return 'ไม่มีงานค้าง ทุกโปรเจคเสร็จหรือเลิกทำแล้ว งานใหม่จะขึ้นที่นี่เมื่อเริ่มทำ';
+}
+
 async function renderToday() {
 	const data = await api('/api/overview');
+	// A fresh install asks a few things before anything is sent anywhere.
+	if (data.setup) {
+		location.hash = '#/setup';
+		return;
+	}
 	useAccounts(data.accounts);
 	showScan(data.scan);
 	const s = data.summarizer;
@@ -422,7 +435,7 @@ async function renderToday() {
 				<p>${top.length ? `${top.length === 1 ? 'งานที่ควร' : `${top.length} งานที่ควร`}หยิบก่อน เรียงจากเรื่องที่รีบที่สุด` : 'ยังไม่มีงานที่ค้างอยู่'}</p>
 				${workingNote(s)}${pausedNote(s)}</header>
 			${box('ทำต่อ', top.length ? `<div class="blocks">${top.map(block).join('')}</div>`
-				: '<p class="empty">ไม่มีงานค้าง เมื่อเปิด Claude Code หรือ Codex ทำงาน งานจะขึ้นที่นี่</p>')}
+				: `<p class="empty">${emptyToday(data)}</p>`)}
 			${rest.length ? box('ยังค้างอยู่อีก', `<div class="minis">${rest.map(mini).join('')}</div>`) : ''}
 		</div>
 		<div class="stack">
@@ -658,6 +671,7 @@ async function checkClaude() {
 	}
 	const login = document.querySelector('[data-claude-login]');
 	if (login) login.hidden = s.loggedIn || !s.found;
+	return s;
 }
 
 app.addEventListener('click', async event => {
@@ -897,6 +911,110 @@ app.addEventListener('click', event => {
 	roots.focus();
 });
 
+// First run
+
+/**
+ * The page a fresh install opens on. It shows what was found, then asks the
+ * few things that cannot be guessed. Nothing is summarized, and so nothing is
+ * sent anywhere, until the person presses เริ่มใช้งาน.
+ */
+async function renderSetup() {
+	const { editable: ed, sources, scan } = await api('/api/setup');
+	showScan(scan);
+	const on = (yes, text) => `<span class="pill ${yes ? 'on' : 'off'}">${text}</span>`;
+	const found = (name, src) => src.found
+		? `${on(true, 'เจอแล้ว')} ${name} มีงาน ${src.sessions} session`
+		: `${on(false, 'ไม่เจอ')} ไม่พบ log ของ ${name} ในเครื่องนี้`;
+	const roots = (ed.roots.length ? ed.roots : ed.suggestedRoots).join('\n');
+	const accountHelp = a => [
+		a.lastTs ? `ใช้ล่าสุด ${ago(a.lastTs)}` : '',
+		a.recentProjects?.length ? `กับ ${a.recentProjects.join(', ')}` : '',
+	].filter(Boolean).join(' ');
+	const choice = (value, title, help, checked) => `<label class="choice"><input type="radio" name="summaryChoice" value="${value}" ${checked ? 'checked' : ''}>
+		<span><b class="choice-title">${esc(title)}</b><br><span class="field-help">${esc(help)}</span></span></label>`;
+
+	app.innerHTML = `<div class="page">
+		<header class="page-head"><h1>เริ่มใช้ Worklog</h1>
+			<p>ตอบอีกไม่กี่ข้อแล้วเริ่มได้เลย ทุกอย่างแก้ภายหลังได้ในหน้าตั้งค่า</p></header>
+		<form class="settings" id="setup" novalidate>
+		${box('เจออะไรในเครื่องนี้', `<div class="fields">
+			<p>${found('Claude Code', sources.claude)}</p>
+			<p>${found('Codex', sources.codex)}</p>
+			<p class="field-help">Worklog อ่านเฉพาะงานที่ทำใน Claude Code และ Codex ซึ่งเก็บ log ไว้ในเครื่องนี้ แชทธรรมดาในแอปหรือเว็บ Claude ไม่ถูกอ่าน และไม่มีอะไรส่งออกไปจนกว่าคุณจะเลือกวิธีสรุปด้านล่าง</p>
+		</div>`)}
+		${box('โฟลเดอร์โปรเจค', `<div class="fields">
+			${field('roots', 'โฟลเดอร์ที่เก็บโปรเจค', `<textarea class="input mono-input" id="roots" name="roots" rows="3" spellcheck="false">${esc(roots)}</textarea>`,
+				'Worklog เดาจากงานที่เคยทำ บรรทัดละหนึ่งโฟลเดอร์ โฟลเดอร์ย่อยข้างในแต่ละอันนับเป็นหนึ่งโปรเจค ถ้าไม่แน่ใจ ปล่อยไว้แบบนี้ได้')}
+		</div>`)}
+		${ed.accounts.length ? box('ตั้งชื่อบัญชี Claude', `<div class="fields">
+			<p class="field-help">ตั้งชื่อที่จำง่าย เช่น บัญชีงาน หรือ บัญชีส่วนตัว ดูจากโปรเจคที่ใช้ล่าสุดว่าเป็นบัญชีไหน</p>
+			${ed.accounts.map(a => field(`acct-${esc(a.uuid)}`, `รหัส ${esc(a.uuid.slice(0, 8))} <span class="guess">(${a.sessions} session)</span>`,
+				`<input class="input" id="acct-${esc(a.uuid)}" data-account="${esc(a.uuid)}" maxlength="40" value="${esc(a.label)}">`, esc(accountHelp(a)))).join('')}
+		</div>`) : ''}
+		${box('สรุปงานด้วย AI', `<div class="fields">
+			<p class="field-help">AI ช่วยอ่านบทสนทนาแล้วบอกว่างานไปถึงไหน ควรทำอะไรต่อ ไม่ใช้ก็ได้ ส่วนอื่นของ Worklog ทำงานได้ครบ</p>
+			<fieldset class="choices"><legend class="field-label">ใช้อะไรสรุป</legend>
+				${choice('claude', 'Claude Code CLI', 'ใช้โควต้าของบัญชี Claude ที่เข้าสู่ระบบไว้ในเครื่องนี้', true)}
+				<div class="how-row choice-extra"><p class="save-status" id="claude-status" role="status">กำลังตรวจ claude CLI</p>
+					<span class="mark-actions"><button class="btn-copy" type="button" data-claude-login hidden>เข้าสู่ระบบ Claude</button>
+					<button class="btn-copy" type="button" data-claude-check>ตรวจอีกครั้ง</button></span></div>
+				${choice('api', 'API ด้วย key ของคุณเอง', 'Claude API, OpenAI, Gemini (มีแบบใช้ฟรี), Groq หรือโปรแกรมในเครื่องอย่าง Ollama ตั้งค่า key ต่อในหน้าตั้งค่าหลังกดเริ่มใช้งาน', false)}
+				${choice('off', 'ยังไม่ใช้', 'ไม่ส่งอะไรออกไปเลย เปิดภายหลังได้ในหน้าตั้งค่า', false)}
+			</fieldset>
+		</div>`)}
+		${box('เตือนงานทับซ้อน', `<div class="fields">
+			<label class="switch"><input type="checkbox" name="hooks" checked><span class="switch-track" aria-hidden="true"></span><span>ติดตั้ง hook ใน Claude Code</span></label>
+			<p class="field-help">ให้ Claude รู้ตัวก่อนแก้ไฟล์ที่อีก session เพิ่งแก้ และอ่านสรุปงานล่าสุดของโปรเจคก่อนเริ่ม session ใหม่ เอาออกได้ในหน้าตั้งค่า</p>
+		</div>`)}
+		<div class="save-bar">
+			<button class="btn-save" type="submit">เริ่มใช้งาน</button>
+			<p class="save-status" id="save-status" role="status"></p>
+		</div>
+		</form>
+	</div>`;
+	const status = await checkClaude();
+	// Without a signed-in CLI, the safe first choice is not to summarize at all.
+	if (status && !status.loggedIn) {
+		const off = app.querySelector('input[name="summaryChoice"][value="off"]');
+		if (off) off.checked = true;
+	}
+}
+
+app.addEventListener('submit', async event => {
+	const form = event.target.closest('#setup');
+	if (!form) return;
+	event.preventDefault();
+	const el = form.elements;
+	const status = form.querySelector('#save-status');
+	const choice = el.summaryChoice.value;
+	const settings = {
+		roots: lines(el.roots.value),
+		accounts: Object.fromEntries([...form.querySelectorAll('[data-account]')].map(i => [i.dataset.account, i.value])),
+		summary: { enabled: choice !== 'off', provider: choice === 'api' ? 'api' : 'claude' },
+	};
+	form.querySelector('.btn-save').disabled = true;
+	status.className = 'save-status';
+	status.textContent = 'กำลังบันทึก';
+	try {
+		const res = await fetch('/api/setup', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ settings, hooks: el.hooks.checked }) });
+		const data = await res.json();
+		if (!res.ok) {
+			status.className = 'save-status is-error';
+			status.textContent = data.field ? data.error : 'บันทึกไม่สำเร็จ';
+			form.querySelector('.btn-save').disabled = false;
+			if (data.field === 'roots') el.roots.focus();
+			return;
+		}
+		// With an API the key comes next, on the settings page.
+		location.hash = choice === 'api' ? '#/settings' : '#/';
+	}
+	catch {
+		status.className = 'save-status is-error';
+		status.textContent = 'บันทึกไม่สำเร็จ';
+		form.querySelector('.btn-save').disabled = false;
+	}
+});
+
 // Project and session detail
 
 function timeline(sessions) {
@@ -1028,7 +1146,7 @@ async function renderSession(id) {
 
 // Routing
 
-const PAGES = { '/': 'today', '/projects': 'projects', '/accounts': 'accounts', '/settings': 'settings' };
+const PAGES = { '/': 'today', '/projects': 'projects', '/accounts': 'accounts', '/settings': 'settings', '/setup': 'setup' };
 
 // Open disclosures are matched by their own label and the heading of the
 // block around them, so a redraw can open the same ones again.
@@ -1051,8 +1169,8 @@ async function route({ quiet = false, auto = false } = {}) {
 	const hash = location.hash.replace(/^#/, '') || '/';
 	const [, kind, rawId] = hash.match(/^\/(p|s)\/(.+)$/) ?? [];
 	const page = PAGES[hash] ?? (kind === 's' || kind === 'p' ? 'projects' : 'today');
-	if (auto && (page === 'settings' || busyEditing())) {
-		if (page !== 'settings') pollTimer = setTimeout(() => route({ quiet: true, auto: true }), 3000);
+	if (auto && (page === 'settings' || page === 'setup' || busyEditing())) {
+		if (page !== 'settings' && page !== 'setup') pollTimer = setTimeout(() => route({ quiet: true, auto: true }), 3000);
 		return;
 	}
 	for (const link of document.querySelectorAll('.nav')) {
@@ -1071,6 +1189,7 @@ async function route({ quiet = false, auto = false } = {}) {
 		else if (page === 'projects') await renderProjects();
 		else if (page === 'accounts') await renderAccounts();
 		else if (page === 'settings') await renderSettings();
+		else if (page === 'setup') await renderSetup();
 		else await renderToday();
 		if (animateBars) releaseBars();
 		lastRefresh = Date.now();

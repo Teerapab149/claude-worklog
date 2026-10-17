@@ -203,7 +203,8 @@ export function createSummaryQueue({ db, config, run = runSummary, log = () => {
 
 	/** Queues sessions with new messages since their summary, within autoDays. */
 	function enqueueStale() {
-		if (!config.summary.enabled) return 0;
+		// Nothing is sent anywhere until the person has gone through the setup page.
+		if (!config.summary.enabled || config.setup === 'pending') return 0;
 		const since = new Date(now() - config.summary.autoDays * 86400000).toISOString();
 		const rows = db.raw.prepare(`
 			SELECT s.id, s.cwd, s.last_human_ts, s.last_assistant_ts, m.source_ts, m.json, m.error_at

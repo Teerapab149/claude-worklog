@@ -107,6 +107,7 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 			return {
 				scan: lastScan,
 				warning,
+				setup: config.setup === 'pending',
 				summarizer: queue?.status() ?? null,
 				accounts: queries.accounts(db, config),
 				next: queries.nextUp(db, config),
@@ -134,6 +135,14 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		}],
 		['GET', /^\/api\/settings$/, () => settingsBody()],
 		['PUT', /^\/api\/settings$/, (_, body) => saveSettings(body)],
+		['GET', /^\/api\/setup$/, () => ({ ...settingsBody(), sources: setupSources() })],
+		['POST', /^\/api\/setup$/, (_, body) => {
+			const out = saveSettings(body?.settings ?? {}, { finishSetup: true });
+			const hooks = body?.hooks ? applyHooks(config, 'install') : null;
+			// The person has chosen; summaries may start now.
+			queue?.enqueueStale();
+			return { ...out, hooks };
+		}],
 		['POST', /^\/api\/summary\/claude-status$/, () => claudeStatus(config)],
 		['POST', /^\/api\/summary\/claude-login$/, () => ({ started: claudeLogin(config) })],
 		['POST', /^\/api\/hooks$/, (_, body) => {
@@ -173,6 +182,15 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		return { accounts: queries.accounts(db, config) };
 	}
 
+	/** What the setup page says it found: which tools have logs here, and how many sessions. */
+	function setupSources() {
+		const count = tool => db.raw.prepare('SELECT COUNT(*) AS n FROM sessions WHERE tool = ?').get(tool).n;
+		return {
+			claude: { dir: config.claudeDir, found: fs.existsSync(path.join(config.claudeDir, 'projects')), sessions: count('claude') },
+			codex: { dir: config.codexDir, found: fs.existsSync(path.join(config.codexDir, 'sessions')), sessions: count('codex') },
+		};
+	}
+
 	function settingsBody(extra = {}) {
 		return {
 			scan: lastScan,
@@ -190,7 +208,7 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		};
 	}
 
-	function saveSettings(body) {
+	function saveSettings(body, { finishSetup = false } = {}) {
 		if (!configFile) throw httpError(409, 'read_only');
 		let local;
 		try { local = readLocalConfig(configFile); }
@@ -202,6 +220,7 @@ export function createApp({ db, config, configFile = null, configWarning = null,
 		}
 		const known = new Set(db.raw.prepare("SELECT uuid FROM accounts WHERE tool = 'claude'").all().map(a => a.uuid));
 		const { next, changed } = settings.merge(local, body ?? {}, known);
+		if (finishSetup) next.setup = 'done';
 		writeLocalConfig(next, configFile);
 		// Every part of the server holds this one object, so change it in place.
 		const fresh = resolveConfig(next);

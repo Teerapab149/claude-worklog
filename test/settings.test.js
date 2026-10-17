@@ -88,3 +88,31 @@ test('the settings page saves to the config file and applies it without a restar
 	assert.deepEqual(file.overlap, { windowMinutes: 45, preToolUse: 'ask' });
 	assert.equal(db.raw.prepare('SELECT label FROM accounts WHERE uuid = ?').get('a').label, 'บัญชีงาน');
 });
+
+test('a fresh install waits on the setup page, and finishing it saves the choices and starts nothing it should not', async t => {
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'worklog-setup-'));
+	const configFile = path.join(dir, 'config.local.json');
+	const local = { setup: 'pending', claudeDir: dir, codexDir: path.join(dir, 'codex'), accounts: { a: 'บัญชี a' } };
+	fs.writeFileSync(configFile, JSON.stringify(local));
+	const config = resolveConfig(local);
+	const db = openDb(':memory:');
+	db.saveAccount('a', 'บัญชี a');
+	let summarized = 0;
+	const server = await startServer({ db, config, configFile, port: 0, log: () => {}, run: async () => { summarized += 1; throw new Error('no'); } });
+	t.after(() => { server.close(); db.close(); fs.rmSync(dir, { recursive: true, force: true }); });
+	const base = `http://127.0.0.1:${server.address().port}`;
+
+	assert.equal((await (await fetch(`${base}/api/overview`)).json()).setup, true);
+	const info = await (await fetch(`${base}/api/setup`)).json();
+	assert.equal(info.sources.claude.found, false);
+
+	const done = await fetch(`${base}/api/setup`, { method: 'POST', headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ settings: { accounts: { a: 'บัญชีงาน' }, summary: { enabled: false, provider: 'claude' } }, hooks: false }) });
+	assert.equal(done.status, 200);
+	const file = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+	assert.equal(file.setup, 'done');
+	assert.equal(file.accounts.a, 'บัญชีงาน');
+	assert.equal(file.summary.enabled, false);
+	assert.equal((await (await fetch(`${base}/api/overview`)).json()).setup, false);
+	assert.equal(summarized, 0);
+});
