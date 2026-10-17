@@ -123,6 +123,17 @@ npm test
 
 ตัวติดตั้งสร้างด้วย `node tools/build-installer.js` ซึ่งต้องมี [Inno Setup 6](https://jrsoftware.org/isinfo.php) ในเครื่อง ถ้าไม่มีจะเตรียมไฟล์ไว้ใน `dist/stage` แล้วหยุด เวลาออกเวอร์ชันใหม่ ให้แก้ `version` ใน `package.json` แล้ว push tag ชื่อเดียวกัน เช่น `v0.2.0` GitHub Actions จะสร้าง `Worklog-Setup-0.2.0.exe` แล้วแนบไว้ใน release ให้เอง
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+
+ตัวติดตั้งทุกตัวสร้างบน GitHub Actions จากโค้ดใน repo นี้ด้วย [release.yml](.github/workflows/release.yml) แล้วส่งไปลงลายเซ็นที่ SignPath โดยต้องมีคนกดอนุมัติทุกครั้ง
+
+- ผู้เขียนโค้ดและผู้ตรวจ: [Teerapab149](https://github.com/Teerapab149)
+- ผู้อนุมัติการลงลายเซ็น: [Teerapab149](https://github.com/Teerapab149)
+
+Worklog ไม่ส่งข้อมูลไปที่ระบบอื่นในเครือข่าย ยกเว้นเมื่อผู้ใช้หรือตัวติดตั้งสั่งให้ทำ รายละเอียดอยู่ในหัวข้อ [ความเป็นส่วนตัว](#ความเป็นส่วนตัว)
+
 ## License
 
 [MIT](LICENSE)

@@ -4,12 +4,19 @@ name: Release
 # to a GitHub release of the same name. The tag must match package.json.
 # Installed copies update themselves from the newest release, so actions and
 # tools are pinned to exact versions: nothing changes under a release by itself.
+#
+# When the repository variable SIGNPATH_ORGANIZATION_ID is set, the installer is
+# signed through SignPath before it is attached, and each signing request waits
+# for an approver to press Approve on signpath.io. Without the variable the
+# installer is attached unsigned, as before. docs/code-signing.md has the setup.
 on:
   push:
     tags: ['v*']
 
 permissions:
   contents: write
+  # SignPath reads the unsigned installer from this run's artifacts.
+  actions: read
 
 concurrency:
   group: release
@@ -44,12 +51,47 @@ jobs:
         shell: pwsh
         run: node tools/smoke-installer.js
 
+      - name: Hand the unsigned installer to SignPath
+        id: unsigned
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: unsigned-installer
+          path: dist/Worklog-Setup-*.exe
+          if-no-files-found: error
+
+      - name: Sign it with SignPath
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        uses: SignPath/github-action-submit-signing-request@c92b958760219087e01f8d67a1669ed57afe2627 # v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          # Someone approves each request by hand, so give them an hour.
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist/signed
+
+      - name: Check the signature
+        if: vars.SIGNPATH_ORGANIZATION_ID != ''
+        shell: pwsh
+        run: |
+          $file = Get-ChildItem dist/signed/Worklog-Setup-*.exe | Select-Object -First 1
+          if (-not $file) { throw 'SignPath returned no installer' }
+          $sig = Get-AuthenticodeSignature $file.FullName
+          if ($sig.Status -ne 'Valid') { throw "signature on $($file.Name) is $($sig.Status): $($sig.StatusMessage)" }
+          "signed by $($sig.SignerCertificate.Subject)"
+
       - name: Attach it to the release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $file = Get-ChildItem dist/Worklog-Setup-*.exe | Select-Object -First 1
+          # The signed copy when there is one, otherwise the installer as built.
+          $file = @(Get-ChildItem dist/signed/Worklog-Setup-*.exe -ErrorAction SilentlyContinue) + @(Get-ChildItem dist/Worklog-Setup-*.exe) | Select-Object -First 1
           node tools/release-notes.js "${{ github.ref_name }}" | Out-File -Encoding utf8 notes.md
           gh release view "${{ github.ref_name }}" *> $null
           if ($LASTEXITCODE -eq 0) { gh release upload "${{ github.ref_name }}" $file.FullName --clobber }

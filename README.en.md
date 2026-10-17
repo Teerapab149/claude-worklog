@@ -123,6 +123,17 @@ Each tool's log reader lives in `src/sources/`. A new tool needs a reader that r
 
 `node tools/build-installer.js` builds the installer and needs [Inno Setup 6](https://jrsoftware.org/isinfo.php); without it, it stops after preparing `dist/stage`. To release, set `version` in `package.json` and push a matching tag such as `v0.2.0`; GitHub Actions builds `Worklog-Setup-0.2.0.exe` and attaches it to the release.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/)
+
+Every installer is built on GitHub Actions from this repository by [release.yml](.github/workflows/release.yml), then sent to SignPath for signing, and each signing request is approved by hand.
+
+- Authors and reviewers: [Teerapab149](https://github.com/Teerapab149)
+- Approvers: [Teerapab149](https://github.com/Teerapab149)
+
+Worklog does not transfer any information to other networked systems unless the user or the installer asks it to. See [Privacy](#privacy) for what that covers.
+
 ## License
 
 [MIT](LICENSE)
