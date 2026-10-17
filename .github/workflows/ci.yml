@@ -21,6 +21,7 @@ jobs:
         with:
           node-version: '24.14.0'
       - run: npm test
+      - run: node tools/check-text.js
 
   # Builds the installer and runs it quietly on a clean machine, so a broken
   # installer is seen here instead of on someone's computer after an update.

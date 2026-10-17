@@ -19,6 +19,7 @@
     "install-hooks": "node --disable-warning=ExperimentalWarning bin/hooks.js install",
     "uninstall-hooks": "node --disable-warning=ExperimentalWarning bin/hooks.js uninstall",
     "scan": "node --disable-warning=ExperimentalWarning bin/scan.js",
-    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\""
+    "test": "node --disable-warning=ExperimentalWarning --test \"test/*.test.js\"",
+    "check": "node tools/check-text.js"
   }
 }
