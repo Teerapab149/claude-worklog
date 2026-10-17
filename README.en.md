@@ -29,7 +29,7 @@ Everything runs on your machine. There is no outside server and nothing to sign 
 2. Double-click it. If Windows shows "Windows protected your PC", press More info and then Run anyway (the file is not signed yet).
 3. Choose whether to add a desktop icon and whether to install the Claude Code hooks, then press Install.
 
-The installer brings its own Node, so nothing else needs installing, and it needs no administrator rights. It reads your logs to find your project folders and accounts; change them later on the settings page. Settings and data live in `%LOCALAPPDATA%Worklog` and stay there through updates and uninstall; delete that folder if you no longer want them. Uninstall from Apps in Windows Settings.
+The installer brings its own Node, so nothing else needs installing, and it needs no administrator rights. The first time it opens, a setup page shows what it found, lets you name your accounts and choose how summaries are made; everything can be changed later on the settings page. Once installed, Worklog updates itself when a new version is out. Settings and data live in `%LOCALAPPDATA%Worklog` and stay there through updates and uninstall; delete that folder if you no longer want them. Uninstall from Apps in Windows Settings.
 
 ### From source
 
